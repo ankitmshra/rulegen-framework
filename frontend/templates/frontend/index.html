@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'frontend/css/app.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-indigo-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-shield-alt text-2xl"></i>
+                <h1 class="text-2xl font-bold">SpamGenie</h1>
+            </div>
+            <div>
+                <span class="text-sm">Generate SpamAssassin Rules</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Sidebar -->
+            <aside class="lg:col-span-3 bg-white p-6 rounded-lg shadow">
+                <nav>
+                    <ul class="space-y-2">
+                        <li>
+                            <a href="#"
+                                class="nav-link active flex items-center p-2 rounded-md hover:bg-indigo-50 text-indigo-700"
+                                data-target="upload-section">
+                                <i class="fas fa-upload w-6"></i>
+                                <span>Upload Files</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#"
+                                class="nav-link flex items-center p-2 rounded-md hover:bg-indigo-50 text-gray-700"
+                                data-target="headers-section">
+                                <i class="fas fa-list-ul w-6"></i>
+                                <span>Select Headers</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#"
+                                class="nav-link flex items-center p-2 rounded-md hover:bg-indigo-50 text-gray-700"
+                                data-target="generate-section">
+                                <i class="fas fa-magic w-6"></i>
+                                <span>Generate Rules</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#"
+                                class="nav-link flex items-center p-2 rounded-md hover:bg-indigo-50 text-gray-700"
+                                data-target="history-section">
+                                <i class="fas fa-history w-6"></i>
+                                <span>History</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- Content Area -->
+            <div class="lg:col-span-9">
+                <!-- Upload Section -->
+                <section id="upload-section" class="content-section bg-white p-6 rounded-lg shadow">
+                    <h2 class="text-xl font-semibold mb-4">Upload Email Files</h2>
+                    <div class="mb-6">
+                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50"
+                            id="dropzone">
+                            <i class="fas fa-upload text-5xl text-gray-400 mb-4"></i>
+                            <p class="text-gray-500">Drag and drop .eml files here or click to browse</p>
+                            <input type="file" id="file-input" class="hidden" accept=".eml" multiple>
+                        </div>
+                    </div>
+                    <div id="file-list" class="space-y-2">
+                        <!-- File list will be populated dynamically -->
+                    </div>
+                    <div class="flex justify-end mt-4">
+                        <button id="next-to-headers"
+                            class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                            disabled>
+                            Next: Select Headers
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Headers Selection Section -->
+                <section id="headers-section" class="content-section bg-white p-6 rounded-lg shadow hidden">
+                    <h2 class="text-xl font-semibold mb-4">Select Email Headers to Analyze</h2>
+                    <div class="mb-6">
+                        <div class="flex items-center space-x-2 mb-2">
+                            <input type="checkbox" id="select-all-headers" class="rounded text-indigo-600">
+                            <label for="select-all-headers" class="font-semibold">Select All</label>
+                        </div>
+                        <div class="border rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <div id="headers-list" class="space-y-2">
+                                <!-- Headers list will be populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between mt-4">
+                        <button id="back-to-upload"
+                            class="border border-gray-300 px-4 py-2 rounded-md hover:bg-gray-50">
+                            Back: Upload Files
+                        </button>
+                        <button id="next-to-generate"
+                            class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                            disabled>
+                            Next: Generate Rules
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Generate Rules Section -->
+                <section id="generate-section" class="content-section bg-white p-6 rounded-lg shadow hidden">
+                    <h2 class="text-xl font-semibold mb-4">Generate SpamAssassin Rules</h2>
+                    <div class="mb-6">
+                        <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                            <h3 class="font-semibold mb-2">Selected Files:</h3>
+                            <ul id="selected-files-list" class="list-disc pl-6">
+                                <!-- Selected files will be populated dynamically -->
+                            </ul>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h3 class="font-semibold mb-2">Selected Headers:</h3>
+                            <ul id="selected-headers-list" class="list-disc pl-6">
+                                <!-- Selected headers will be populated dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="generation-status" class="hidden mb-6 p-4 rounded-lg bg-yellow-50 text-yellow-700">
+                        <div class="flex items-center">
+                            <i class="fas fa-spinner fa-spin mr-2"></i>
+                            <span>Generating rules... This may take a moment.</span>
+                        </div>
+                    </div>
+                    <div id="generation-result" class="hidden mb-6">
+                        <h3 class="font-semibold mb-2">Generated SpamAssassin Rule:</h3>
+                        <div class="bg-white border border-gray-200 rounded-lg overflow-x-auto">
+                            <!-- Markdown rendered content will be placed here -->
+                            <div id="markdown-output" class="markdown-content p-4"></div>
+
+                            <!-- Original plain text (hidden) -->
+                            <div class="hidden">
+                                <pre id="rule-output" class="whitespace-pre-wrap font-mono text-sm"></pre>
+                            </div>
+                        </div>
+                        <div class="flex justify-end mt-2">
+                            <button id="copy-rule"
+                                class="text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 flex items-center">
+                                <i class="fas fa-copy mr-1"></i> Copy to Clipboard
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between mt-4">
+                        <button id="back-to-headers"
+                            class="border border-gray-300 px-4 py-2 rounded-md hover:bg-gray-50">
+                            Back: Select Headers
+                        </button>
+                        <button id="generate-rules"
+                            class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
+                            Generate Rules
+                        </button>
+                    </div>
+                </section>
+
+                <!-- History Section -->
+                <section id="history-section" class="content-section bg-white p-6 rounded-lg shadow hidden">
+                    <h2 class="text-xl font-semibold mb-4">Generation History</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-white">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        ID</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Date</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Files</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Status</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-list" class="divide-y divide-gray-200">
+                                <!-- History list will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-6">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <span class="text-sm">© 2025 SpamGenie - Generate SpamAssassin Rules</span>
+                </div>
+                <div>
+                    <ul class="flex space-x-4">
+                        <li>
+                            <a href="#" class="text-gray-400 hover:text-white">
+                                <i class="fab fa-github"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-400 hover:text-white">
+                                <i class="fab fa-twitter"></i>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" class="text-gray-400 hover:text-white">
+                                <i class="fas fa-envelope"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </footer>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'frontend/js/app.js' %}"></script>
+{% endblock %}
