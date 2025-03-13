@@ -2,8 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import EmailFile, RuleGeneration
-from .serializers import EmailFileSerializer, RuleGenerationSerializer
+from .models import EmailFile, RuleGeneration, PromptTemplate
+from .serializers import EmailFileSerializer, RuleGenerationSerializer, PromptTemplateSerializer
 from .services import SpamGenieService
 import threading
 
@@ -37,6 +37,32 @@ class EmailFileViewSet(viewsets.ModelViewSet):
             return Response(headers, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PromptTemplateViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing prompt templates."""
+    queryset = PromptTemplate.objects.all().order_by('name')
+    serializer_class = PromptTemplateSerializer
+
+    @action(detail=False, methods=['get'])
+    def modules(self, request):
+        """Get all available prompt modules."""
+        modules = PromptTemplate.objects.filter(is_module=True)
+        serializer = self.get_serializer(modules, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def base(self, request):
+        """Get the base prompt template."""
+        try:
+            base_prompt = PromptTemplate.objects.get(is_base=True)
+            serializer = self.get_serializer(base_prompt)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except PromptTemplate.DoesNotExist:
+            return Response(
+                {"error": "No base prompt template found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 class RuleGenerationViewSet(viewsets.ModelViewSet):
@@ -75,8 +101,9 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
         try:
             # Create a temporary RuleGeneration object
             temp_rule_generation = RuleGeneration(
-                selected_headers=request.data.get('selected_headers', [])
-                )
+                selected_headers=request.data.get('selected_headers', []),
+                prompt_modules=request.data.get('prompt_modules', [])
+            )
 
             # Add email files to the temporary object
             email_file_ids = request.data.get('email_file_ids', [])

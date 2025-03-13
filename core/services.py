@@ -1,4 +1,4 @@
-import json
+from .prompt_manager import PromptManager
 import re
 import requests
 from typing import List, Dict, Any
@@ -141,9 +141,10 @@ class SpamGenieService:
 
     @staticmethod
     def generate_prompt(rule_generation: RuleGeneration) -> str:
-        """Generate a detailed prompt for Gemini API based on selected keys and email content."""
+        """Generate a detailed prompt based on selected keys, email content, and prompt modules."""
         selected_keys = rule_generation.selected_headers
         email_files = rule_generation.email_files.all()
+        selected_modules = rule_generation.prompt_modules or []
 
         analysis_data = []
         for email_file in email_files:
@@ -157,74 +158,12 @@ class SpamGenieService:
         # Extract common patterns and characteristics
         common_patterns = SpamGenieService._extract_common_patterns(analysis_data)
 
-        JSON_HEADERS = json.dumps(analysis_data[0]['headers'], indent=2)
-        PLAIN_TEXT_SAMPLE = analysis_data[0]['body']['plain'][:500]
-        HTML_CONTENT_SAMPLE = analysis_data[0]['body']['html'][:500]
-        JSON_PATTERNS = json.dumps(common_patterns, indent=2)
+        # Add common patterns to the first email analysis for prompt building
+        if analysis_data:
+            analysis_data[0]['common_patterns'] = common_patterns
 
-        prompt = f"""
-As a SpamAssassin expert, analyze this spam email data and create effective rules.
-
-SPAM EMAIL ANALYSIS:
-Headers:
-{JSON_HEADERS}
-
-Email Body Samples:
-Plain Text: {PLAIN_TEXT_SAMPLE}
-HTML Content: {HTML_CONTENT_SAMPLE}
-
-Common Patterns Detected:
-{JSON_PATTERNS}
-
-## Instructions
-
-Create a comprehensive SpamAssassin ruleset that would effectively detect similar spam emails.
-
-For each rule or rule group:
-1. Provide a brief explanation of what the rule detects and its importance
-2. Include score justification and false positive considerations
-3. Place the actual rule code in a code block
-
-For example:
-
-### Header Check: From Address
-
-This rule targets suspicious sender addresses claiming to be from medical journals.
-Score: 2.0 - Strong indicator with low false positive risk.
-
-```
-header   JOURNAL_SPAM_FROM   /^From:.*journal.*dermatology/i
-describe JOURNAL_SPAM_FROM   Suspicious sender claiming to be a medical journal
-score    JOURNAL_SPAM_FROM   2.0
-```
-
-### Rule Components to Include
-
-1. **Header Checks**
-   - Patterns for suspicious From, Subject or other headers
-   - Variations to catch different spoofing techniques
-
-2. **Body Checks**
-   - Rules for suspicious phrases in plain text and HTML
-   - Patterns indicating unsolicited communications
-   - Keyword patterns specific to this type of spam
-
-3. **URI Rules** (if applicable)
-   - Rules for suspicious domains or URL patterns
-
-4. **Meta Rules**
-   - Logical combinations of individual rules
-   - Score aggregation logic
-
-5. **Final Ruleset**
-   - Main rule that combines everything
-   - Overall score and description
-
-### False Positive Prevention
-
-Include notes on how your rules minimize false positives,
-especially for legitimate communications from real medical journals or researchers.
-"""
+        # Use PromptManager to build the prompt
+        prompt = PromptManager.build_prompt(analysis_data, selected_modules)
 
         return prompt
 

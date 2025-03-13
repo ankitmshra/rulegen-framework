@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentState = {
         fileIds: [],
         selectedHeaders: [],
+        selectedModules: [],
         ruleGenerated: false,
         currentRuleId: null
     };
@@ -23,6 +24,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Headers selection functionality
     setupHeadersSelection();
+
+    // Module selection functionality
+    setupModuleSelection();
 
     // Rule generation functionality
     setupRuleGeneration();
@@ -56,6 +60,22 @@ document.addEventListener('DOMContentLoaded', function () {
             currentState.selectedHeaders = headers;
             currentState.ruleGenerated = false;
             resetRuleGenerationUI();
+            return true;
+        }
+        return false;
+    }
+
+    function updateModuleState(modules) {
+        // Check if module state has changed
+        if (JSON.stringify(modules.sort()) !== JSON.stringify(currentState.selectedModules.sort())) {
+            console.log("Module state changed - resetting rule generation");
+            currentState.selectedModules = modules;
+            currentState.ruleGenerated = false;
+            resetRuleGenerationUI();
+            // This doesn't actually reset the UI, it just refreshes the prompt preview
+            if (modules !== null) {
+                promptHandler.loadDefaultPrompt();
+            }
             return true;
         }
         return false;
@@ -104,6 +124,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else if (link.getAttribute('data-target') === 'generate-section') {
                     // Update summary
                     updateSelectedSummary();
+
+                    // Load available modules
+                    loadAvailableModules();
 
                     // Load default prompt
                     promptHandler.loadDefaultPrompt();
@@ -462,6 +485,135 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // -----------------------------------------------------
+    // Module Selection Functions
+    // -----------------------------------------------------
+    function setupModuleSelection() {
+        // Initialize modules list event delegation
+        document.getElementById('modules-list').addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                // Update tracking state
+                const selectedModules = getSelectedModules();
+                updateModuleState(selectedModules);
+            }
+        });
+
+        // Setup search functionality
+        const searchInput = document.getElementById('module-search');
+        if (searchInput) {
+            // Clear search when navigating to the section
+            searchInput.value = '';
+
+            // Add input event listener
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase().trim();
+                filterModules(searchTerm);
+            });
+        }
+    }
+
+    function filterModules(searchTerm) {
+        const moduleItems = document.querySelectorAll('#modules-list .module-item');
+        let visibleCount = 0;
+
+        moduleItems.forEach(item => {
+            const moduleName = item.querySelector('.module-name').textContent.toLowerCase();
+
+            if (searchTerm === '' || moduleName.includes(searchTerm)) {
+                item.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                item.classList.add('hidden');
+            }
+        });
+
+        // Show/hide "no results" message
+        const noModulesFound = document.getElementById('no-modules-found');
+        if (noModulesFound) {
+            if (visibleCount === 0 && searchTerm !== '') {
+                noModulesFound.classList.remove('hidden');
+            } else {
+                noModulesFound.classList.add('hidden');
+            }
+        }
+    }
+
+    function loadAvailableModules() {
+        // Show loading indicator
+        document.getElementById('modules-loading').classList.remove('hidden');
+        document.getElementById('modules-list').innerHTML = '';
+
+        // Hide "no results" message
+        const noModulesFound = document.getElementById('no-modules-found');
+        if (noModulesFound) {
+            noModulesFound.classList.add('hidden');
+        }
+
+        // Clear search input
+        const searchInput = document.getElementById('module-search');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+
+        // Fetch available modules
+        fetch('/api/prompt-templates/modules/')
+            .then(response => response.json())
+            .then(data => {
+                // Hide loading indicator
+                document.getElementById('modules-loading').classList.add('hidden');
+                const modulesListEl = document.getElementById('modules-list');
+                modulesListEl.innerHTML = '';
+
+                if (data.length === 0) {
+                    modulesListEl.innerHTML = '<p class="text-gray-500">No prompt modules available</p>';
+                    return;
+                }
+
+                // Add module items to list
+                data.forEach(module => {
+                    const moduleItem = document.createElement('div');
+                    moduleItem.className = 'module-item flex items-start space-x-2 p-2 border border-gray-200 rounded mb-2';
+                    moduleItem.innerHTML = `
+                        <input type="checkbox" id="module-${module.module_type}" class="mt-1 rounded text-indigo-600" 
+                               value="${module.module_type}" ${currentState.selectedModules.includes(module.module_type) ? 'checked' : ''}>
+                        <div class="flex-1">
+                            <label for="module-${module.module_type}" class="module-name font-medium cursor-pointer">${module.name}</label>
+                            <div class="text-sm text-gray-500">${module.description}</div>
+                        </div>
+                    `;
+                    modulesListEl.appendChild(moduleItem);
+                });
+
+                // Apply any existing search filter
+                const searchInput = document.getElementById('module-search');
+                if (searchInput && searchInput.value) {
+                    filterModules(searchInput.value.toLowerCase().trim());
+                }
+
+                // Trigger update if there were previously selected modules
+                if (currentState.selectedModules.length > 0) {
+                    // Restore checked state
+                    currentState.selectedModules.forEach(moduleType => {
+                        const checkbox = document.querySelector(`#module-${moduleType}`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                        }
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading available modules:', error);
+                document.getElementById('modules-loading').classList.add('hidden');
+                document.getElementById('modules-list').innerHTML =
+                    '<div class="text-center py-4 text-red-500"><i class="fas fa-exclamation-circle mr-2"></i> Failed to load modules</div>';
+            });
+    }
+
+    function getSelectedModules() {
+        const moduleCheckboxes = document.querySelectorAll('#modules-list input[type="checkbox"]:checked');
+        return Array.from(moduleCheckboxes).map(checkbox => checkbox.value);
+    }
+
+    // -----------------------------------------------------
     // Prompt Handling Functions
     // -----------------------------------------------------
     function setupPromptEditor() {
@@ -521,8 +673,9 @@ document.addEventListener('DOMContentLoaded', function () {
         function loadDefaultPrompt() {
             const emailFileIds = currentState.fileIds;
             const selectedHeaders = currentState.selectedHeaders;
+            const selectedModules = currentState.selectedModules;
 
-            console.log("Loading default prompt with:", { emailFileIds, selectedHeaders });
+            console.log("Loading default prompt with:", { emailFileIds, selectedHeaders, selectedModules });
 
             if (emailFileIds.length === 0 || selectedHeaders.length === 0) {
                 console.log("Cannot load prompt - missing file IDs or headers");
@@ -541,7 +694,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 },
                 body: JSON.stringify({
                     email_file_ids: emailFileIds,
-                    selected_headers: selectedHeaders
+                    selected_headers: selectedHeaders,
+                    prompt_modules: selectedModules
                 })
             })
                 .then(response => {
@@ -671,11 +825,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function generateRules() {
-        // Get selected headers and files
+        // Get selected headers and modules
         const selectedHeaders = getSelectedHeaders();
+        const selectedModules = getSelectedModules();
 
         // Update state tracking
         updateHeaderState(selectedHeaders);
+        updateModuleState(selectedModules);
 
         // Fetch email files to get their IDs
         fetch('/api/email-files/')
@@ -704,7 +860,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Prepare request data
                 const requestData = {
                     email_file_ids: emailFileIds,
-                    selected_headers: selectedHeaders
+                    selected_headers: selectedHeaders,
+                    prompt_modules: selectedModules
                 };
 
                 // Get custom prompt if available
@@ -967,6 +1124,32 @@ document.addEventListener('DOMContentLoaded', function () {
                     headerItem.textContent = header;
                     selectedHeadersListEl.appendChild(headerItem);
                 });
+
+                // Update selected modules list (if available)
+                if (data.prompt_modules && Array.isArray(data.prompt_modules)) {
+                    currentState.selectedModules = data.prompt_modules;
+
+                    // Check corresponding checkboxes once modules are loaded
+                    const checkboxInterval = setInterval(() => {
+                        const moduleCheckboxes = document.querySelectorAll('#modules-list input[type="checkbox"]');
+                        if (moduleCheckboxes.length > 0) {
+                            clearInterval(checkboxInterval);
+
+                            // Clear all checkboxes first
+                            moduleCheckboxes.forEach(checkbox => {
+                                checkbox.checked = false;
+                            });
+
+                            // Check the ones in the selected modules
+                            data.prompt_modules.forEach(moduleType => {
+                                const checkbox = document.querySelector(`#module-${moduleType}`);
+                                if (checkbox) {
+                                    checkbox.checked = true;
+                                }
+                            });
+                        }
+                    }, 100); // Check every 100ms until modules are loaded
+                }
 
                 // Update state tracking with the viewed rule's data
                 currentState.fileIds = data.email_files.map(file => file.id);

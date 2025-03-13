@@ -27,9 +27,25 @@ class RuleGeneration(models.Model):
     email_files = models.ManyToManyField(EmailFile, related_name='rule_generations')
     selected_headers = models.JSONField()
     prompt = models.TextField()
+    prompt_modules = models.JSONField(default=list)
     rule = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     is_complete = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Rule Generation #{self.id} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class PromptTemplate(models.Model):
+    """Model to store prompt templates for rule generation."""
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    template = models.TextField()
+    is_base = models.BooleanField(default=False)
+    is_module = models.BooleanField(default=False)
+    module_type = models.CharField(max_length=50, blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import EmailFile, RuleGeneration
+from .models import EmailFile, RuleGeneration, PromptTemplate
 
 
 class EmailFileSerializer(serializers.ModelSerializer):
@@ -18,6 +18,15 @@ class EmailFileSerializer(serializers.ModelSerializer):
         return None
 
 
+class PromptTemplateSerializer(serializers.ModelSerializer):
+    """Serializer for the PromptTemplate model."""
+
+    class Meta:
+        model = PromptTemplate
+        fields = ['id', 'name', 'description', 'template', 'is_base', 'is_module',
+                  'module_type', 'created_at', 'updated_at']
+
+
 class RuleGenerationSerializer(serializers.ModelSerializer):
     """Serializer for the RuleGeneration model."""
     email_files = EmailFileSerializer(many=True, read_only=True)
@@ -26,11 +35,16 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
         write_only=True
     )
     custom_prompt = serializers.CharField(required=False, write_only=True)
+    prompt_modules = serializers.ListField(
+        child=serializers.CharField(),
+        required=False
+    )
 
     class Meta:
         model = RuleGeneration
         fields = ['id', 'email_files', 'email_file_ids', 'selected_headers',
-                  'prompt', 'rule', 'created_at', 'is_complete', 'custom_prompt']
+                  'prompt', 'rule', 'created_at', 'is_complete',
+                  'custom_prompt', 'prompt_modules']
         read_only_fields = ['rule', 'created_at', 'is_complete']
         extra_kwargs = {
             'prompt': {'required': False}  # Make prompt field optional

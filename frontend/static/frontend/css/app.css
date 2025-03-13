@@ -308,3 +308,97 @@ input[type="checkbox"] {
     font-style: italic;
     color: #9ca3af;
 }
+
+/* Module search and display styles */
+#modules-list {
+    height: 240px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+#modules-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#modules-list::-webkit-scrollbar-track {
+    background: #f7fafc;
+    border-radius: 10px;
+}
+
+#modules-list::-webkit-scrollbar-thumb {
+    background-color: #cbd5e0;
+    border-radius: 10px;
+}
+
+.module-item {
+    transition: all 0.2s ease;
+    background-color: white;
+}
+
+.module-item:hover {
+    background-color: #f9fafb;
+    border-color: #a5b4fc;
+}
+
+#module-search {
+    transition: all 0.2s ease;
+}
+
+#module-search:focus {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+/* Improve search icon alignment */
+.search-icon-container {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+/* Animation for no results found */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+#no-modules-found {
+    animation: fadeIn 0.3s ease;
+}
+
+/* Limit display to 3 modules initially */
+#modules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.module-item {
+    flex-shrink: 0;
+    margin-bottom: 0;
+}
+
+/* Add a subtle shadow to indicate scrollable content */
+#modules-list::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to top, rgba(247, 250, 252, 0.8), transparent);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+#modules-list:hover::after {
+    opacity: 1;
+}
