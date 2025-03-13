@@ -203,3 +203,9 @@ frontend/react-app/yarn-error.log*
 # Keep the React static files out of version control
 # They should be built during deployment
 frontend/static/frontend/
+
+# Dont track the uploaded files while testing
+# Media files in uploads directory 
+media/uploads/*
+# But keep the directory structure
+!media/uploads/.keep
