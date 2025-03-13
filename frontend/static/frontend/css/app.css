@@ -83,11 +83,43 @@ input[type="checkbox"] {
 }
 
 /* Markdown content styling */
-.markdown-content {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    font-size: 16px;
-    line-height: 1.6;
-    word-wrap: break-word;
+.markdown-content pre {
+    padding: 16px;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #0d1117;
+    /* Dark background to match github-dark theme */
+    border-radius: 6px;
+    position: relative;
+    margin-bottom: 16px;
+    color: #e6e6e6;
+    /* Light text color for better contrast */
+}
+
+.markdown-content code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    background-color: rgba(110, 118, 129, 0.4);
+    /* Darker inline code background */
+    border-radius: 3px;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    color: #e6e6e6;
+    /* Light text color for better contrast */
+}
+
+.markdown-content pre>code {
+    padding: 0;
+    margin: 0;
+    font-size: 100%;
+    word-break: normal;
+    white-space: pre;
+    background: transparent;
+    border: 0;
+    display: block;
+    color: inherit;
+    /* Inherit color from parent */
 }
 
 .markdown-content h1,
@@ -136,37 +168,6 @@ input[type="checkbox"] {
     margin-bottom: 16px;
 }
 
-.markdown-content pre {
-    padding: 16px;
-    overflow: auto;
-    font-size: 85%;
-    line-height: 1.45;
-    background-color: #f6f8fa;
-    border-radius: 6px;
-    position: relative;
-    margin-bottom: 16px;
-}
-
-.markdown-content code {
-    padding: 0.2em 0.4em;
-    margin: 0;
-    font-size: 85%;
-    background-color: rgba(27, 31, 35, 0.05);
-    border-radius: 3px;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-}
-
-.markdown-content pre>code {
-    padding: 0;
-    margin: 0;
-    font-size: 100%;
-    word-break: normal;
-    white-space: pre;
-    background: transparent;
-    border: 0;
-    display: block;
-}
-
 /* Code block copy button */
 .code-block-container {
     position: relative;
@@ -198,4 +199,112 @@ input[type="checkbox"] {
 .code-copy-button:hover {
     background-color: #f3f4f6;
     color: #1f2937;
+}
+
+.markdown-content .hljs-comment,
+.markdown-content .hljs-quote {
+    color: #8b949e;
+    /* Brighter comments */
+}
+
+.markdown-content .hljs-keyword,
+.markdown-content .hljs-selector-tag,
+.markdown-content .hljs-meta-keyword,
+.markdown-content .hljs-doctag,
+.markdown-content .hljs-section,
+.markdown-content .hljs-selector-class,
+.markdown-content .hljs-meta,
+.markdown-content .hljs-selector-id,
+.markdown-content .hljs-attribute {
+    color: #ff7b72;
+    /* Brighter keywords */
+}
+
+.markdown-content .hljs-attribute,
+.markdown-content .hljs-name,
+.markdown-content .hljs-type,
+.markdown-content .hljs-number,
+.markdown-content .hljs-selector-attr,
+.markdown-content .hljs-selector-pseudo,
+.markdown-content .hljs-tag {
+    color: #79c0ff;
+    /* Brighter attributes/numbers */
+}
+
+.markdown-content .hljs-string,
+.markdown-content .hljs-meta-string,
+.markdown-content .hljs-regexp,
+.markdown-content .hljs-link {
+    color: #a5d6ff;
+    /* Brighter strings */
+}
+
+.markdown-content .hljs-built_in,
+.markdown-content .hljs-class,
+.markdown-content .hljs-title {
+    color: #d2a8ff;
+    /* Brighter built-ins and classes */
+}
+
+.markdown-content .hljs-symbol,
+.markdown-content .hljs-bullet,
+.markdown-content .hljs-subst,
+.markdown-content .hljs-variable,
+.markdown-content .hljs-template-variable,
+.markdown-content .hljs-selector-tag,
+.markdown-content .hljs-deletion {
+    color: #ffa657;
+    /* Brighter variables and symbols */
+}
+
+/* Add a subtle border to better define the code area */
+.markdown-content pre {
+    border: 1px solid #30363d;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Prompt editor styles */
+.prompt-editor {
+    width: 100%;
+    min-height: 300px;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background-color: #f9fafb;
+    color: #1f2937;
+    resize: vertical;
+}
+
+.prompt-editor:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.prompt-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.prompt-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    font-size: 14px;
+    color: #4b5563;
+}
+
+.prompt-toggle:hover {
+    color: #1f2937;
+}
+
+/* Improve readability of rule comments/descriptions */
+.markdown-content pre code .hljs-comment {
+    font-style: italic;
+    color: #9ca3af;
 }

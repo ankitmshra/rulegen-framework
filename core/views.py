@@ -68,3 +68,34 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
             'is_complete': rule_generation.is_complete,
             'rule': rule_generation.rule if rule_generation.is_complete else None
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def generate_default_prompt(self, request):
+        """Generate a default prompt without saving."""
+        try:
+            # Create a temporary RuleGeneration object
+            temp_rule_generation = RuleGeneration(
+                selected_headers=request.data.get('selected_headers', [])
+                )
+
+            # Add email files to the temporary object
+            email_file_ids = request.data.get('email_file_ids', [])
+            email_files = EmailFile.objects.filter(id__in=email_file_ids)
+
+            # We need to save to use M2M relationship
+            temp_rule_generation.save()
+            temp_rule_generation.email_files.set(email_files)
+
+            # Generate the prompt
+            prompt = SpamGenieService.generate_prompt(temp_rule_generation)
+
+            # Delete the temporary object
+            temp_rule_generation.delete()
+
+            return Response({
+                'prompt': prompt
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

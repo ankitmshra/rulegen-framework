@@ -157,61 +157,74 @@ class SpamGenieService:
         # Extract common patterns and characteristics
         common_patterns = SpamGenieService._extract_common_patterns(analysis_data)
 
-        prompt = f"""As a SpamAssassin expert, analyze this
-spam email data and create effective rules.
+        JSON_HEADERS = json.dumps(analysis_data[0]['headers'], indent=2)
+        PLAIN_TEXT_SAMPLE = analysis_data[0]['body']['plain'][:500]
+        HTML_CONTENT_SAMPLE = analysis_data[0]['body']['html'][:500]
+        JSON_PATTERNS = json.dumps(common_patterns, indent=2)
+
+        prompt = f"""
+As a SpamAssassin expert, analyze this spam email data and create effective rules.
 
 SPAM EMAIL ANALYSIS:
 Headers:
-{json.dumps(analysis_data[0]['headers'], indent=2)}
+{JSON_HEADERS}
 
 Email Body Samples:
-Plain Text: {analysis_data[0]['body']['plain'][:500]}...
-HTML Content: {analysis_data[0]['body']['html'][:500]}...
+Plain Text: {PLAIN_TEXT_SAMPLE}
+HTML Content: {HTML_CONTENT_SAMPLE}
 
 Common Patterns Detected:
-{json.dumps(common_patterns, indent=2)}
+{JSON_PATTERNS}
 
-Create a comprehensive SpamAssassin rule that would
-effectively detect similar spam emails. The rule should:
+## Instructions
 
-1. Header Checks:
-   - Implement checks for suspicious header patterns
-   - Include regex patterns for header value variations
-   - Consider header presence/absence patterns
+Create a comprehensive SpamAssassin ruleset that would effectively detect similar spam emails.
 
-2. Body Checks:
-   - Add content-based rules for both plain text and HTML
-   - Include checks for suspicious URLs and domains
-   - Consider text patterns and formatting characteristics
+For each rule or rule group:
+1. Provide a brief explanation of what the rule detects and its importance
+2. Include score justification and false positive considerations
+3. Place the actual rule code in a code block
 
-3. Meta Rules:
-   - Combine individual checks using meta rules
-   - Implement score aggregation logic
-   - Consider rule dependencies
+For example:
 
-4. Scoring:
-   - Assign appropriate scores based on confidence
-   - Include score descriptions and justifications
-   - Consider false positive prevention
+### Header Check: From Address
 
-Format the response as a complete SpamAssassin rule set with:
-- Rule descriptions and documentation
-- Header, body, and meta rules
-- Scoring justifications
-- False positive prevention measures
+This rule targets suspicious sender addresses claiming to be from medical journals.
+Score: 2.0 - Strong indicator with low false positive risk.
 
-Use this template format:
 ```
-# Rule: RULE_NAME
-# Description: [Detailed description of what this rule detects]
-# Score: [score] [justification]
-header   RULE_NAME_HEADER   [pattern]
-body     RULE_NAME_BODY     [pattern]
-uri      RULE_NAME_URI      [pattern]
-meta     RULE_NAME_META     [condition]
-score    RULE_NAME          [score]
-describe RULE_NAME          [description]
-```"""
+header   JOURNAL_SPAM_FROM   /^From:.*journal.*dermatology/i
+describe JOURNAL_SPAM_FROM   Suspicious sender claiming to be a medical journal
+score    JOURNAL_SPAM_FROM   2.0
+```
+
+### Rule Components to Include
+
+1. **Header Checks**
+   - Patterns for suspicious From, Subject or other headers
+   - Variations to catch different spoofing techniques
+
+2. **Body Checks**
+   - Rules for suspicious phrases in plain text and HTML
+   - Patterns indicating unsolicited communications
+   - Keyword patterns specific to this type of spam
+
+3. **URI Rules** (if applicable)
+   - Rules for suspicious domains or URL patterns
+
+4. **Meta Rules**
+   - Logical combinations of individual rules
+   - Score aggregation logic
+
+5. **Final Ruleset**
+   - Main rule that combines everything
+   - Overall score and description
+
+### False Positive Prevention
+
+Include notes on how your rules minimize false positives,
+especially for legitimate communications from real medical journals or researchers.
+"""
 
         return prompt
 
@@ -252,13 +265,14 @@ describe RULE_NAME          [description]
         try:
             rule_generation = RuleGeneration.objects.get(id=rule_generation_id)
 
-            # Generate the prompt
-            prompt = SpamGenieService.generate_prompt(rule_generation)
-            rule_generation.prompt = prompt
-            rule_generation.save()
+            # Generate the prompt if it's not already set (from a custom prompt)
+            if not rule_generation.prompt:
+                prompt = SpamGenieService.generate_prompt(rule_generation)
+                rule_generation.prompt = prompt
+                rule_generation.save()
 
             # Query Gemini API
-            rule = SpamGenieService.query_gemini(prompt)
+            rule = SpamGenieService.query_gemini(rule_generation.prompt)
 
             # Update the rule generation
             rule_generation.rule = rule

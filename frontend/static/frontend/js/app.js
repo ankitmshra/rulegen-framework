@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', function () {
         currentRuleId: null
     };
 
+    // Setup prompt editor and get its functions
+    const promptHandler = setupPromptEditor();
+
     // Main navigation functionality
     setupNavigation();
 
@@ -99,8 +102,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else if (link.getAttribute('data-target') === 'history-section') {
                     loadRuleGenerationHistory();
                 } else if (link.getAttribute('data-target') === 'generate-section') {
-                    // Just update summary, don't reset state unless necessary
+                    // Update summary
                     updateSelectedSummary();
+
+                    // Load default prompt
+                    promptHandler.loadDefaultPrompt();
 
                     // If files or headers changed but UI wasn't reset yet
                     if (!currentState.ruleGenerated) {
@@ -184,15 +190,24 @@ document.addEventListener('DOMContentLoaded', function () {
             alert('Only .eml files are supported. Some files were skipped.');
         }
 
+        // Clear existing upload items to prevent duplicates
+        const fileListEl = document.getElementById('file-list');
+        const existingUploadItems = fileListEl.querySelectorAll('.uploading-item');
+        existingUploadItems.forEach(item => item.remove());
+
+        // Track upload completion
+        let completedUploads = 0;
+        const totalUploads = validFiles.length;
+
         // Upload each valid file
         validFiles.forEach(file => {
             const formData = new FormData();
             formData.append('file', file);
 
             // Show loading indicator
-            const fileListEl = document.getElementById('file-list');
             const fileItem = document.createElement('div');
-            fileItem.className = 'flex items-center justify-between p-3 border rounded';
+            fileItem.className = 'flex items-center justify-between p-3 border rounded uploading-item';
+            fileItem.setAttribute('data-filename', file.name);
             fileItem.innerHTML = `
                 <div class="flex items-center">
                     <i class="fas fa-file-alt text-indigo-500 mr-2"></i>
@@ -221,51 +236,64 @@ document.addEventListener('DOMContentLoaded', function () {
                     return response.json();
                 })
                 .then(data => {
-                    // Update file item with success status
-                    fileItem.innerHTML = `
-                    <div class="flex items-center">
-                        <i class="fas fa-file-alt text-indigo-500 mr-2"></i>
-                        <span>${data.original_filename}</span>
-                    </div>
-                    <div class="flex items-center">
-                        <span class="text-green-500 mr-2"><i class="fas fa-check-circle"></i> Uploaded</span>
-                        <button class="delete-file text-red-500 hover:text-red-700" data-id="${data.id}">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </div>
-                `;
+                    // Remove the temporary upload item
+                    const uploadItem = document.querySelector(`.uploading-item[data-filename="${file.name}"]`);
+                    if (uploadItem) {
+                        uploadItem.remove();
+                    }
+
+                    // Count completed upload
+                    completedUploads++;
+
+                    // Only reload file list once all uploads are complete
+                    if (completedUploads === totalUploads) {
+                        // Reload all files from server
+                        loadEmailFiles(true);
+                    }
 
                     // Enable next button if files are uploaded
                     document.getElementById('next-to-headers').disabled = false;
-
-                    // Add event listener for delete button
-                    fileItem.querySelector('.delete-file').addEventListener('click', function () {
-                        deleteEmailFile(this.getAttribute('data-id'));
-                    });
-
-                    // After upload, refresh all files to update the state
-                    loadEmailFiles(true);
                 })
                 .catch(error => {
                     console.error('Error uploading file:', error);
 
-                    fileItem.innerHTML = `
-                    <div class="flex items-center">
-                        <i class="fas fa-file-alt text-red-500 mr-2"></i>
-                        <span>${file.name}</span>
-                    </div>
-                    <div>
-                        <span class="text-red-500"><i class="fas fa-exclamation-circle"></i> Upload failed</span>
-                    </div>
-                `;
+                    // Update the temporary item with error state
+                    const uploadItem = document.querySelector(`.uploading-item[data-filename="${file.name}"]`);
+                    if (uploadItem) {
+                        uploadItem.classList.remove('uploading-item');
+                        uploadItem.innerHTML = `
+                            <div class="flex items-center">
+                                <i class="fas fa-file-alt text-red-500 mr-2"></i>
+                                <span>${file.name}</span>
+                            </div>
+                            <div>
+                                <span class="text-red-500"><i class="fas fa-exclamation-circle"></i> Upload failed</span>
+                            </div>
+                        `;
+                    }
+
+                    // Count completed upload even if it failed
+                    completedUploads++;
+
+                    // Check if all uploads are complete
+                    if (completedUploads === totalUploads) {
+                        loadEmailFiles(true);
+                    }
                 });
         });
+
+        // Clear the file input to ensure change event will fire again for the same files
+        document.getElementById('file-input').value = '';
     }
 
     function loadEmailFiles(checkStateChange = false) {
-        // Clear file list
+        // Clear file list - but keep any uploading items
         const fileListEl = document.getElementById('file-list');
+        const uploadingItems = Array.from(fileListEl.querySelectorAll('.uploading-item'));
         fileListEl.innerHTML = '';
+
+        // Put back any uploading items
+        uploadingItems.forEach(item => fileListEl.appendChild(item));
 
         // Fetch email files
         fetch('/api/email-files/')
@@ -284,6 +312,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // Add file items to list
                 data.forEach(file => {
+                    // Skip if we already have an uploading item for this file
+                    if (document.querySelector(`.uploading-item[data-filename="${file.original_filename}"]`)) {
+                        return;
+                    }
+
                     const fileItem = document.createElement('div');
                     fileItem.className = 'flex items-center justify-between p-3 border rounded';
                     fileItem.innerHTML = `
@@ -429,6 +462,137 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // -----------------------------------------------------
+    // Prompt Handling Functions
+    // -----------------------------------------------------
+    function setupPromptEditor() {
+        console.log("Setting up prompt editor");
+        const togglePromptEditor = document.getElementById('toggle-prompt-editor');
+        const promptPreview = document.getElementById('prompt-preview');
+        const promptEditContainer = document.getElementById('prompt-edit-container');
+        const promptEditor = document.getElementById('prompt-editor');
+        const resetPromptBtn = document.getElementById('reset-prompt');
+        const savePromptBtn = document.getElementById('save-prompt');
+        const togglePromptText = document.getElementById('toggle-prompt-text');
+
+        console.log("Elements found:", {
+            togglePromptEditor, promptPreview, promptEditContainer,
+            promptEditor, resetPromptBtn, savePromptBtn, togglePromptText
+        });
+
+        let defaultPrompt = ''; // Store the default prompt
+
+        // Toggle prompt editor
+        togglePromptEditor.addEventListener('click', () => {
+            const isHidden = promptEditContainer.classList.contains('hidden');
+
+            if (isHidden) {
+                // Show editor
+                promptEditContainer.classList.remove('hidden');
+                togglePromptText.textContent = 'Hide Editor';
+            } else {
+                // Hide editor
+                promptEditContainer.classList.add('hidden');
+                togglePromptText.textContent = 'Edit Prompt';
+            }
+        });
+
+        // Reset prompt to default
+        resetPromptBtn.addEventListener('click', () => {
+            promptEditor.value = defaultPrompt;
+            updatePromptPreview(defaultPrompt);
+        });
+
+        // Save prompt changes
+        savePromptBtn.addEventListener('click', () => {
+            const updatedPrompt = promptEditor.value;
+            updatePromptPreview(updatedPrompt);
+
+            // Hide editor after saving
+            promptEditContainer.classList.add('hidden');
+            togglePromptText.textContent = 'Edit Prompt';
+        });
+
+        // Update preview when prompt changes
+        promptEditor.addEventListener('input', () => {
+            updatePromptPreview(promptEditor.value);
+        });
+
+        // Function to load default prompt based on selected files and headers
+        function loadDefaultPrompt() {
+            const emailFileIds = currentState.fileIds;
+            const selectedHeaders = currentState.selectedHeaders;
+
+            console.log("Loading default prompt with:", { emailFileIds, selectedHeaders });
+
+            if (emailFileIds.length === 0 || selectedHeaders.length === 0) {
+                console.log("Cannot load prompt - missing file IDs or headers");
+                return;
+            }
+
+            // Show loading indicator
+            updatePromptPreview('Loading default prompt...');
+
+            // Fetch default prompt
+            fetch('/api/rule-generations/generate_default_prompt/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({
+                    email_file_ids: emailFileIds,
+                    selected_headers: selectedHeaders
+                })
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.prompt) {
+                        // Store and display the default prompt
+                        defaultPrompt = data.prompt;
+                        promptEditor.value = defaultPrompt;
+                        updatePromptPreview(defaultPrompt);
+                        console.log("Default prompt loaded successfully");
+                    } else {
+                        console.error("No prompt in response:", data);
+                        updatePromptPreview('Error: No prompt received from server');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading default prompt:', error);
+                    updatePromptPreview('Error loading default prompt: ' + error.message);
+                });
+        }
+
+        // Function to update prompt preview
+        function updatePromptPreview(text) {
+            const previewContent = promptPreview.querySelector('pre');
+            if (previewContent) {
+                previewContent.textContent = text;
+            } else {
+                console.error("Cannot find preview element");
+            }
+        }
+
+        // Export the loadDefaultPrompt function
+        return {
+            loadDefaultPrompt,
+            getCustomPrompt: () => {
+                const editor = document.getElementById('prompt-editor');
+                if (!editor) {
+                    console.error("Cannot find prompt editor element");
+                    return "";
+                }
+                return editor.value || "";
+            }
+        };
+    }
+
+    // -----------------------------------------------------
     // Rule Generation Functions
     // -----------------------------------------------------
     function setupRuleGeneration() {
@@ -537,6 +701,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('generation-result').classList.add('hidden');
                 document.getElementById('generate-rules').disabled = true;
 
+                // Prepare request data
+                const requestData = {
+                    email_file_ids: emailFileIds,
+                    selected_headers: selectedHeaders
+                };
+
+                // Get custom prompt if available
+                const customPrompt = promptHandler.getCustomPrompt();
+                if (customPrompt && customPrompt.trim() !== '') {
+                    requestData.custom_prompt = customPrompt;
+                }
+
+                console.log("Sending rule generation request:", requestData);
+
                 // Generate rules
                 fetch('/api/rule-generations/', {
                     method: 'POST',
@@ -544,10 +722,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrftoken
                     },
-                    body: JSON.stringify({
-                        email_file_ids: emailFileIds,
-                        selected_headers: selectedHeaders
-                    })
+                    body: JSON.stringify(requestData)
                 })
                     .then(response => {
                         if (!response.ok) {
@@ -807,6 +982,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     // Render as markdown
                     renderMarkdown(data.rule);
+
+                    // Update prompt preview if available
+                    if (data.prompt) {
+                        const promptEditor = document.getElementById('prompt-editor');
+                        if (promptEditor) {
+                            promptEditor.value = data.prompt;
+                            const previewContent = document.querySelector('#prompt-preview pre');
+                            if (previewContent) {
+                                previewContent.textContent = data.prompt;
+                            }
+                        }
+                    }
                 } else {
                     document.getElementById('generation-status').classList.remove('hidden');
                     document.getElementById('generation-result').classList.add('hidden');
