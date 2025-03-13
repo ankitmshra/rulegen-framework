@@ -24,6 +24,7 @@ class EmailFile(models.Model):
 
 class RuleGeneration(models.Model):
     """Model to store generated SpamAssassin rules."""
+    workspace_name = models.CharField(max_length=255, default="Unnamed Workspace")
     email_files = models.ManyToManyField(EmailFile, related_name='rule_generations')
     selected_headers = models.JSONField()
     prompt = models.TextField()
@@ -33,7 +34,7 @@ class RuleGeneration(models.Model):
     is_complete = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"Rule Generation #{self.id} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.workspace_name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
 
 class PromptTemplate(models.Model):

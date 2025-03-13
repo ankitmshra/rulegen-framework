@@ -42,12 +42,14 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RuleGeneration
-        fields = ['id', 'email_files', 'email_file_ids', 'selected_headers',
+        fields = ['id', 'workspace_name', 'email_files', 'email_file_ids', 'selected_headers',
                   'prompt', 'rule', 'created_at', 'is_complete',
                   'custom_prompt', 'prompt_modules']
         read_only_fields = ['rule', 'created_at', 'is_complete']
         extra_kwargs = {
-            'prompt': {'required': False}  # Make prompt field optional
+            'prompt': {'required': False},  # Make prompt field optional
+            # Make workspace_name optional for backwards compatibility
+            'workspace_name': {'required': False}
         }
 
     def create(self, validated_data):
@@ -61,6 +63,10 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
         # If custom prompt was provided, use it directly
         if custom_prompt:
             validated_data['prompt'] = custom_prompt
+
+        # Set default workspace name if not provided
+        if 'workspace_name' not in validated_data or not validated_data['workspace_name']:
+            validated_data['workspace_name'] = 'Unnamed Workspace'
 
         rule_generation = RuleGeneration.objects.create(**validated_data)
 

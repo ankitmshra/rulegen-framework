@@ -172,3 +172,34 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Node.js / React stuff
+node_modules/
+frontend/react-app/node_modules/
+frontend/react-app/.pnp
+frontend/react-app/.pnp.js
+
+# React testing
+frontend/react-app/coverage
+
+# React production build
+frontend/react-app/build/
+
+# React misc
+frontend/react-app/.DS_Store
+frontend/react-app/.env.local
+frontend/react-app/.env.development.local
+frontend/react-app/.env.test.local
+frontend/react-app/.env.production.local
+
+# React debug logs
+frontend/react-app/npm-debug.log*
+frontend/react-app/yarn-debug.log*
+frontend/react-app/yarn-error.log*
+
+# Django collected static files
+/staticfiles/
+
+# Keep the React static files out of version control
+# They should be built during deployment
+frontend/static/frontend/react/

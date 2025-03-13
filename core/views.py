@@ -1,3 +1,4 @@
+from django.db.models import Count, Max
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -91,9 +92,21 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
         rule_generation = get_object_or_404(RuleGeneration, pk=pk)
         return Response({
             'id': rule_generation.id,
+            'workspace_name': rule_generation.workspace_name,
             'is_complete': rule_generation.is_complete,
             'rule': rule_generation.rule if rule_generation.is_complete else None
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def workspaces(self, request):
+        """Get all unique workspaces with their latest rule generation."""
+        workspaces = RuleGeneration.objects.values('workspace_name').annotate(
+            count=Count('id'),
+            latest_id=Max('id'),
+            latest_date=Max('created_at')
+        ).order_by('-latest_date')
+
+        return Response(workspaces, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def generate_default_prompt(self, request):
@@ -102,7 +115,8 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
             # Create a temporary RuleGeneration object
             temp_rule_generation = RuleGeneration(
                 selected_headers=request.data.get('selected_headers', []),
-                prompt_modules=request.data.get('prompt_modules', [])
+                prompt_modules=request.data.get('prompt_modules', []),
+                workspace_name=request.data.get('workspace_name', 'Temporary Workspace')
             )
 
             # Add email files to the temporary object
