@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 import api from '../../api';
@@ -49,7 +49,7 @@ function RuleGenerate({
         }
     }, [ruleGeneration]);
 
-    const loadDefaultPrompt = async () => {
+    const loadDefaultPrompt = useCallback(async () => {
         try {
             setPromptLoading(true);
             const response = await api.post('/api/rule-generations/generate_default_prompt/', {
@@ -68,7 +68,14 @@ function RuleGenerate({
         } finally {
             setPromptLoading(false);
         }
-    };
+    }, [emailFiles, selectedHeaders, selectedModules, workspace.name, setPrompt, setCustomPrompt, setPromptLoading]);
+
+    useEffect(() => {
+        if (!ruleGeneration?.rule && emailFiles.length > 0 && selectedHeaders.length > 0) {
+            loadDefaultPrompt();
+        }
+    }, [emailFiles, selectedHeaders, selectedModules, ruleGeneration, loadDefaultPrompt]);
+
 
     const generateRules = async () => {
         try {

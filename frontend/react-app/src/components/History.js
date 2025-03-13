@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 
@@ -21,7 +21,7 @@ function History({ setWorkspace, currentWorkspace, restorePreviousWorkspace }) {
         }
     }, [selectedWorkspace]);
 
-    const fetchWorkspaces = async () => {
+    const fetchWorkspaces = useCallback(async () => {
         try {
             setIsLoading(true);
             const response = await api.get('/api/rule-generations/workspaces/');
@@ -39,7 +39,11 @@ function History({ setWorkspace, currentWorkspace, restorePreviousWorkspace }) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [currentWorkspace]);
+
+    useEffect(() => {
+        fetchWorkspaces();
+    }, [fetchWorkspaces]);
 
     const fetchRuleGenerationsForWorkspace = async (workspaceName) => {
         try {
@@ -142,8 +146,8 @@ function History({ setWorkspace, currentWorkspace, restorePreviousWorkspace }) {
                                         <button
                                             onClick={() => handleWorkspaceSelect(workspace.workspace_name)}
                                             className={`w-full text-left px-3 py-2 rounded-md transition-colors ${selectedWorkspace === workspace.workspace_name
-                                                    ? 'bg-indigo-100 text-indigo-700'
-                                                    : 'hover:bg-gray-100'
+                                                ? 'bg-indigo-100 text-indigo-700'
+                                                : 'hover:bg-gray-100'
                                                 }`}
                                         >
                                             <div className="font-medium">{workspace.workspace_name}</div>

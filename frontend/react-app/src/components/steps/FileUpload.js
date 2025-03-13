@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import api from '../../api';
 
 function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
@@ -14,14 +14,20 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
         }
     }, []);
 
-    const fetchEmailFiles = async () => {
+    const fetchEmailFiles = useCallback(async () => {
         try {
             const response = await api.get('/api/email-files/');
             setEmailFiles(response.data);
         } catch (error) {
             console.error('Error fetching email files:', error);
         }
-    };
+    }, [setEmailFiles]); // Include setEmailFiles as dependency
+
+    useEffect(() => {
+        if (emailFiles.length === 0) {
+            fetchEmailFiles();
+        }
+    }, [emailFiles.length, fetchEmailFiles]);
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -161,7 +167,7 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="font-medium">{fileName}</span>
                                     <span className={`text-sm ${status === 'complete' ? 'text-green-600' :
-                                            status === 'error' ? 'text-red-600' : 'text-indigo-600'
+                                        status === 'error' ? 'text-red-600' : 'text-indigo-600'
                                         }`}>
                                         {status === 'complete' ? 'Complete' :
                                             status === 'error' ? 'Failed' : `${progress}%`}
@@ -170,7 +176,7 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
                                 <div className="w-full bg-gray-200 rounded-full h-2">
                                     <div
                                         className={`h-2 rounded-full ${status === 'complete' ? 'bg-green-500' :
-                                                status === 'error' ? 'bg-red-500' : 'bg-indigo-500'
+                                            status === 'error' ? 'bg-red-500' : 'bg-indigo-500'
                                             }`}
                                         style={{ width: `${progress}%` }}
                                     ></div>
