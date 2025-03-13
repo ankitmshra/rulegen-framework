@@ -7,6 +7,8 @@ from .models import EmailFile, RuleGeneration, PromptTemplate
 from .serializers import EmailFileSerializer, RuleGenerationSerializer, PromptTemplateSerializer
 from .services import SpamGenieService
 import threading
+import os
+from django.conf import settings
 
 
 class EmailFileViewSet(viewsets.ModelViewSet):
@@ -16,6 +18,10 @@ class EmailFileViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Set the original filename when creating an email file."""
+        # Create the upload directory if it doesn't exist
+        upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+
         file_obj = self.request.FILES.get('file')
         if file_obj:
             if not file_obj.name.lower().endswith('.eml'):

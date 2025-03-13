@@ -91,10 +91,15 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
 
     const uploadFile = async (file) => {
         const formData = new FormData();
+        // Make sure to append the file with the exact key name expected by the backend
         formData.append('file', file);
 
         try {
             await api.post('/api/email-files/', formData, {
+                headers: {
+                    // Let the browser set the correct content type with boundary
+                    'Content-Type': undefined
+                },
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                     setUploadProgress(prev => ({
@@ -111,6 +116,7 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
             }));
         } catch (error) {
             console.error(`Error uploading ${file.name}:`, error);
+            console.error('Response:', error.response?.data);
             setUploadProgress(prev => ({
                 ...prev,
                 [file.name]: { progress: 0, status: 'error' }

@@ -10,6 +10,9 @@ class EmailFileSerializer(serializers.ModelSerializer):
         model = EmailFile
         fields = ['id', 'file', 'file_url', 'original_filename', 'uploaded_at', 'processed']
         read_only_fields = ['uploaded_at', 'processed', 'original_filename']
+        extra_kwargs = {
+            'file': {'required': True, 'allow_empty_file': False}
+        }
 
     def get_file_url(self, obj):
         request = self.context.get('request')
