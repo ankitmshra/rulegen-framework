@@ -140,6 +140,41 @@ class SpamGenieService:
         return patterns
 
     @staticmethod
+    def _extract_domains_from_urls(urls: List[str]) -> List[str]:
+        """Extract domain names from a list of URLs."""
+        domains = []
+        for url in urls:
+            try:
+                # Extract domain using regex
+                domain_match = re.search(r'https?://([^/]+)', url)
+                if domain_match:
+                    domains.append(domain_match.group(1))
+            except Exception:
+                continue
+        return list(set(domains))  # Remove duplicates
+
+    @staticmethod
+    def _enhance_analysis_data(analysis_data: List[Dict]) -> List[Dict]:
+        """Enhance analysis data with additional extracted patterns."""
+        if not analysis_data:
+            return analysis_data
+        
+        # Extract and add URLs
+        for data in analysis_data:
+            html_content = data['body'].get('html', '')
+            urls = SpamGenieService._extract_urls(html_content)
+            domains = SpamGenieService._extract_domains_from_urls(urls)
+            
+            # Add to the data structure
+            data['extracted'] = {
+                'urls': urls,
+                'domains': domains,
+                'html_analysis': SpamGenieService._analyze_html_formatting(html_content)
+            }
+            
+        return analysis_data
+
+    @staticmethod
     def generate_prompt(rule_generation: RuleGeneration) -> str:
         """Generate a detailed prompt based on selected keys, email content, and prompt modules."""
         selected_keys = rule_generation.selected_headers
@@ -156,15 +191,18 @@ class SpamGenieService:
             }
             analysis_data.append(filtered_data)
 
+        # Enhance analysis data with additional patterns
+        enhanced_data = SpamGenieService._enhance_analysis_data(analysis_data)
+
         # Extract common patterns and characteristics
-        common_patterns = SpamGenieService._extract_common_patterns(analysis_data)
+        common_patterns = SpamGenieService._extract_common_patterns(enhanced_data)
 
         # Add common patterns to the first email analysis for prompt building
-        if analysis_data:
-            analysis_data[0]['common_patterns'] = common_patterns
+        if enhanced_data:
+            enhanced_data[0]['common_patterns'] = common_patterns
 
         # Use PromptManager to build the prompt
-        prompt_data = PromptManager.build_prompt(analysis_data, selected_modules, base_prompt_id)
+        prompt_data = PromptManager.build_prompt(enhanced_data, selected_modules, base_prompt_id)
 
         # Store metadata in rule_generation if it's not already set
         if not rule_generation.prompt_metadata:
@@ -172,6 +210,61 @@ class SpamGenieService:
             rule_generation.save(update_fields=['prompt_metadata'])
 
         return prompt_data['prompt']
+
+    @staticmethod
+    def _validate_spamassassin_rules(rules_text: str) -> Dict[str, Any]:
+        """Validate SpamAssassin rules for proper structure."""
+        validation = {
+            'valid': True,
+            'issues': [],
+            'subrules_count': 0,
+            'meta_rules_count': 0
+        }
+        
+        # Look for subrules (should start with __)
+        subrule_regex = r'^(?:header|uri|rawbody|body)\s+(__\w+)'
+        subrules = re.findall(subrule_regex, rules_text, re.MULTILINE)
+        validation['subrules_count'] = len(subrules)
+        
+        # Look for meta rules (should NOT start with __)
+        meta_regex = r'^meta\s+(\w+)'
+        meta_rules = re.findall(meta_regex, rules_text, re.MULTILINE)
+        validation['meta_rules_count'] = len(meta_rules)
+        
+        # Check for basic issues
+        if validation['subrules_count'] == 0:
+            validation['valid'] = False
+            validation['issues'].append("No subrules found. Rules should use the __ prefix.")
+            
+        if validation['meta_rules_count'] == 0:
+            validation['valid'] = False
+            validation['issues'].append("No meta rules found. Meta rules should combine subrules.")
+        
+        # Check for body tag misuse (should use rawbody for HTML)
+        if re.search(r'^body\s+__\w+\s+/<', rules_text, re.MULTILINE):
+            validation['valid'] = False
+            validation['issues'].append("Using 'body' tag with HTML patterns. Should use 'rawbody' instead.")
+        
+        return validation
+
+    @staticmethod
+    def _fix_common_rule_issues(rules_text: str) -> str:
+        """Fix common issues in generated rules."""
+        fixed_text = rules_text
+        
+        # Fix rules without __ prefix
+        subrule_pattern = r'^(header|uri|rawbody|body)\s+([A-Z_]+[^_])'
+        fixed_text = re.sub(subrule_pattern, r'\1 __\2', fixed_text, flags=re.MULTILINE)
+        
+        # Fix body tag with HTML patterns
+        body_html_pattern = r'^body(\s+__\w+\s+/<)'
+        fixed_text = re.sub(body_html_pattern, r'rawbody\1', fixed_text, flags=re.MULTILINE)
+        
+        # Fix uri tag misuse
+        uri_pattern = r'^body(\s+__\w+\s+/https?:)'
+        fixed_text = re.sub(uri_pattern, r'uri\1', fixed_text, flags=re.MULTILINE)
+        
+        return fixed_text
 
     @staticmethod
     def query_gemini(prompt: str) -> str:
@@ -190,7 +283,12 @@ class SpamGenieService:
                 "parts": [{
                     "text": prompt
                 }]
-            }]
+            }],
+            "generationConfig": {
+                "temperature": 0.2,  # Lower temperature for more precise rule generation
+                "topP": 0.9,
+                "maxOutputTokens": 8000
+            }
         }
 
         try:
@@ -200,7 +298,21 @@ class SpamGenieService:
 
             # Extract the generated text from the response
             generated_text = result['candidates'][0]['content']['parts'][0]['text']
-            return generated_text
+            
+            # Fix common issues in the generated rules
+            fixed_rules = SpamGenieService._fix_common_rule_issues(generated_text)
+            
+            # Validate the rules
+            validation = SpamGenieService._validate_spamassassin_rules(fixed_rules)
+            
+            # Add validation info as a comment to the output
+            if not validation['valid']:
+                validation_notes = "\n\n# Validation Notes:\n"
+                for issue in validation['issues']:
+                    validation_notes += f"# - {issue}\n"
+                fixed_rules += validation_notes
+            
+            return fixed_rules
         except Exception as e:
             raise Exception(f"Error querying Gemini API: {str(e)}")
 
