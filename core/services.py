@@ -158,20 +158,20 @@ class SpamGenieService:
         """Enhance analysis data with additional extracted patterns."""
         if not analysis_data:
             return analysis_data
-        
+
         # Extract and add URLs
         for data in analysis_data:
             html_content = data['body'].get('html', '')
             urls = SpamGenieService._extract_urls(html_content)
             domains = SpamGenieService._extract_domains_from_urls(urls)
-            
+
             # Add to the data structure
             data['extracted'] = {
                 'urls': urls,
                 'domains': domains,
                 'html_analysis': SpamGenieService._analyze_html_formatting(html_content)
             }
-            
+
         return analysis_data
 
     @staticmethod
@@ -220,50 +220,83 @@ class SpamGenieService:
             'subrules_count': 0,
             'meta_rules_count': 0
         }
-        
+
         # Look for subrules (should start with __)
-        subrule_regex = r'^(?:header|uri|rawbody|body)\s+(__\w+)'
+        subrule_regex = r'^(?:header|uri|rawbody|body)\s+([_]+\w+)'
         subrules = re.findall(subrule_regex, rules_text, re.MULTILINE)
+
+        # Count subrules with exactly two underscores
+        correct_subrules = [s for s in subrules if s.startswith('__') and not s.startswith('___')]
+        incorrect_prefix_subrules = [s
+                                     for s in subrules
+                                     if not s.startswith('__') or s.startswith('___')]
+
         validation['subrules_count'] = len(subrules)
-        
+        validation['correct_prefix_count'] = len(correct_subrules)
+        validation['incorrect_prefix_count'] = len(incorrect_prefix_subrules)
+
         # Look for meta rules (should NOT start with __)
         meta_regex = r'^meta\s+(\w+)'
         meta_rules = re.findall(meta_regex, rules_text, re.MULTILINE)
         validation['meta_rules_count'] = len(meta_rules)
-        
+
         # Check for basic issues
         if validation['subrules_count'] == 0:
             validation['valid'] = False
             validation['issues'].append("No subrules found. Rules should use the __ prefix.")
-            
-        if validation['meta_rules_count'] == 0:
+
+        if validation['incorrect_prefix_count'] > 0:
             validation['valid'] = False
-            validation['issues'].append("No meta rules found. Meta rules should combine subrules.")
-        
+            validation['issues'].append(f"Found {validation['incorrect_prefix_count']} subrules "
+                                        f"with incorrect prefix. All subrules should "
+                                        f"start with exactly two underscores (__).")
+
         # Check for body tag misuse (should use rawbody for HTML)
-        if re.search(r'^body\s+__\w+\s+/<', rules_text, re.MULTILINE):
+        if re.search(r'^body\s+[_]+\w+\s+/<', rules_text, re.MULTILINE):
             validation['valid'] = False
-            validation['issues'].append("Using 'body' tag with HTML patterns. Should use 'rawbody' instead.")
-        
+            validation['issues'].append("Using 'body' tag with HTML patterns. " +
+                                        "Should use 'rawbody' instead.")
+
         return validation
 
     @staticmethod
     def _fix_common_rule_issues(rules_text: str) -> str:
         """Fix common issues in generated rules."""
         fixed_text = rules_text
-        
-        # Fix rules without __ prefix
+
+        # Fix multiple underscores to exactly two
+        # This will match any rule type followed by
+        # one or more underscores and transform it to exactly two
+        underscore_pattern = r'^(header|uri|rawbody|body)(\s+)([_]{1,5})(\w+)'
+        fixed_text = re.sub(underscore_pattern, r'\1\2__\4', fixed_text, flags=re.MULTILINE)
+
+        # Fix describe lines to match the rule names with exactly two underscores
+        describe_pattern = r'^(describe)(\s+)([_]{1,5})(\w+)'
+        fixed_text = re.sub(describe_pattern, r'\1\2__\4', fixed_text, flags=re.MULTILINE)
+
+        # Fix body tag with HTML patterns
+        body_html_pattern = r'^body(\s+[_]+\w+\s+/<)'
+        fixed_text = re.sub(body_html_pattern, r'rawbody\1', fixed_text, flags=re.MULTILINE)
+
+        # Fix uri tag misuse
+        uri_pattern = r'^body(\s+[_]+\w+\s+/https?:)'
+        fixed_text = re.sub(uri_pattern, r'uri\1', fixed_text, flags=re.MULTILINE)
+
+        # Fix meta references to use exactly two underscores
+        meta_ref_pattern = r'(\([_]{1,5})(\w+)'
+        fixed_text = re.sub(meta_ref_pattern, r'(__\2', fixed_text, flags=re.MULTILINE)
+
+        # Also fix for the closing parenthesis and logical operators
+        meta_ref_end_pattern = r'([_]{1,5})(\w+)(\))'
+        fixed_text = re.sub(meta_ref_end_pattern, r'__\2\3', fixed_text, flags=re.MULTILINE)
+
+        meta_ref_op_pattern = r'([_]{1,5})(\w+)(\s*[&|]{1,2}\s*)'
+        fixed_text = re.sub(meta_ref_op_pattern, r'__\2\3', fixed_text, flags=re.MULTILINE)
+
+        # Fix rules without prefix by adding exactly two underscores
         subrule_pattern = r'^(header|uri|rawbody|body)\s+([A-Z_]+[^_])'
         fixed_text = re.sub(subrule_pattern, r'\1 __\2', fixed_text, flags=re.MULTILINE)
-        
-        # Fix body tag with HTML patterns
-        body_html_pattern = r'^body(\s+__\w+\s+/<)'
-        fixed_text = re.sub(body_html_pattern, r'rawbody\1', fixed_text, flags=re.MULTILINE)
-        
-        # Fix uri tag misuse
-        uri_pattern = r'^body(\s+__\w+\s+/https?:)'
-        fixed_text = re.sub(uri_pattern, r'uri\1', fixed_text, flags=re.MULTILINE)
-        
+
         return fixed_text
 
     @staticmethod
@@ -298,20 +331,20 @@ class SpamGenieService:
 
             # Extract the generated text from the response
             generated_text = result['candidates'][0]['content']['parts'][0]['text']
-            
+
             # Fix common issues in the generated rules
             fixed_rules = SpamGenieService._fix_common_rule_issues(generated_text)
-            
+
             # Validate the rules
             validation = SpamGenieService._validate_spamassassin_rules(fixed_rules)
-            
+
             # Add validation info as a comment to the output
             if not validation['valid']:
                 validation_notes = "\n\n# Validation Notes:\n"
                 for issue in validation['issues']:
                     validation_notes += f"# - {issue}\n"
                 fixed_rules += validation_notes
-            
+
             return fixed_rules
         except Exception as e:
             raise Exception(f"Error querying Gemini API: {str(e)}")

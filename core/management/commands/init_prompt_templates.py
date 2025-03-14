@@ -1,3 +1,5 @@
+# core/management/commands/init_prompt_templates.py
+
 from django.core.management.base import BaseCommand
 from core.models import PromptTemplate
 
@@ -6,14 +8,14 @@ class Command(BaseCommand):
     help = 'Initialize default prompt templates'
 
     def handle(self, *args, **options):
-        # Base prompt
+        # Base prompt - focused only on subrule generation, removed scoring instructions
         base_prompt, created = PromptTemplate.objects.get_or_create(
             name="Base SpamAssassin Rule Generation",
             defaults={
                 "is_base": True,
-                "description": "Basic prompt for generating SpamAssassin rules",
+                "description": "Basic prompt for generating SpamAssassin subrules only",
                 "template": """
-As a SpamAssassin expert, analyze this spam email data and create effective rules following these strict guidelines.
+As a SpamAssassin expert, analyze this spam email data and create effective detection subrules.
 
 SPAM EMAIL ANALYSIS:
 {HEADERS}
@@ -21,75 +23,56 @@ SPAM EMAIL ANALYSIS:
 Email Body Samples:
 {EMAIL_BODY}
 
-## STRICT SpamAssassin Rules Instructions
+## ⚠️ CRITICAL FORMAT REQUIREMENT ⚠️
+All subrules MUST start with EXACTLY TWO underscores: __RULE_NAME
+DO NOT use more or fewer underscores. EXACTLY TWO.
 
-Follow these precise formatting requirements:
+## SpamAssassin Subrule Instructions
 
 1. **Subrule Format**:
-   - All basic detection rules MUST start with double underscore: `__RULE_NAME`
-   - These are subrules that will be combined into meta rules later
+   - Create rules like this: `header __SPAM_SUBJECT Subject =~ /pattern/i`
+   - WRONG: `header ____SPAM_SUBJECT Subject =~ /pattern/i`
+   - WRONG: `header _SPAM_SUBJECT Subject =~ /pattern/i`
+   - CORRECT: `header __SPAM_SUBJECT Subject =~ /pattern/i`
 
 2. **Content Type Detection**:
-   - For HTML content: Use `rawbody` instead of `body`
-   - Example: `rawbody __HTML_PATTERN /pattern/i`
+   - For HTML content: Use `rawbody __HTML_PATTERN /pattern/i`
+   - For plain text: Use `body __TEXT_PATTERN /pattern/i`
 
 3. **URI Detection**:
-   - For URL patterns: Use the `uri` tag, NOT `body`
-   - Example: `uri __SUSPICIOUS_URL /example\.com/i`
+   - For URL patterns: Use `uri __SUSPICIOUS_URL /example\\.com/i`
 
-4. **Header Format**:
-   - Format: `header __HEADER_PATTERN Header-Name =~ /pattern/i`
-   - Do NOT use a processed header name; use the exact header field
+4. **Rule Documentation**:
+   - Document rules with: `describe __RULE_NAME Description of what this rule detects`
+   - The rule name in describe MUST match exactly the name used in the rule
 
-5. **Meta Rules**:
-   - Create meta rules to combine subrules
-   - Format: `meta FINAL_RULE_NAME (__SUBRULE1 && __SUBRULE2)`
-   - Meta rules should NOT start with underscores
+5. **Output Format**:
+   - Group related subrules by type (headers, URI, body, etc.)
+   - Present each subrule + describe as a separate code block for easy copying
 
-6. **Rule Documentation**:
-   - Provide a `describe` line for each rule
-   - Format: `describe RULE_NAME Description of what this rule detects`
-
-7. **Scores**:
-   - Only assign scores to meta rules, not subrules
-   - Format: `score RULE_NAME 3.0 # Justification for score`
-
-## Example Format:
-
-### Suspicious URL Detection
+## Example Correct Subrules:
 
 ```
-# Subrules for URL detection
-uri        __SUSP_URL_TLD     /\.(bid|xyz|top)$/i
-describe   __SUSP_URL_TLD     URL with suspicious TLD
-
-uri        __SHORT_URL        /bit\.ly|goo\.gl/i
-describe   __SHORT_URL        Contains shortened URL
-
-# Meta rule combining the URL subrules
-meta       SUSPICIOUS_URLS    (__SUSP_URL_TLD || __SHORT_URL)
-describe   SUSPICIOUS_URLS    Email contains suspicious or shortened URLs
-score      SUSPICIOUS_URLS    2.5  # Moderate risk, common in spam
+header   __SPAM_SUBJECT_1   Subject =~ /\\[SPAM\\]/i
+describe __SPAM_SUBJECT_1   Subject line contains "[SPAM]"
 ```
 
-### Malicious Header Pattern
-
 ```
-# Subrule for header detection
-header     __FAKE_SENDER      From =~ /.*@(gmail|yahoo)\.com/i
-describe   __FAKE_SENDER      Suspicious sender pattern
-
-# Meta rule using the header subrule
-meta       FORGED_SENDER      (__FAKE_SENDER && !__HAS_DKIM)
-describe   FORGED_SENDER      Likely forged sender address
-score      FORGED_SENDER      3.0  # High risk of forgery
+uri      __SUSP_URL_TLD     /\\.(bid|xyz|top)$/i
+describe __SUSP_URL_TLD     URL with suspicious TLD
 ```
 
-Please create comprehensive rules following this format, focusing on patterns in the provided email data. Include explanations for each rule and justify your scoring decisions.
+```
+rawbody  __HTML_HIDDEN      /<div[^>]+style=["']display:\\s*none["']/i
+describe __HTML_HIDDEN      HTML with hidden content
+```
+
+DO NOT create meta rules or assign scores - these will be handled separately.
+Every rule name MUST start with EXACTLY TWO underscores - no more, no less.
 """
             }
         )
-        
+
         if created:
             self.stdout.write(
                 self.style.SUCCESS(f"Created base prompt: {base_prompt.name}")
@@ -97,7 +80,7 @@ Please create comprehensive rules following this format, focusing on patterns in
         else:
             # Update the template if it already exists
             base_prompt.template = """
-As a SpamAssassin expert, analyze this spam email data and create effective rules following these strict guidelines.
+As a SpamAssassin expert, analyze this spam email data and create effective detection subrules.
 
 SPAM EMAIL ANALYSIS:
 {HEADERS}
@@ -105,13 +88,13 @@ SPAM EMAIL ANALYSIS:
 Email Body Samples:
 {EMAIL_BODY}
 
-## STRICT SpamAssassin Rules Instructions
+## SpamAssassin Subrule Instructions
 
-Follow these precise formatting requirements:
+Your task is to generate ONLY subrules (not meta rules or scoring) following these requirements:
 
 1. **Subrule Format**:
-   - All basic detection rules MUST start with double underscore: `__RULE_NAME`
-   - These are subrules that will be combined into meta rules later
+   - All subrules MUST start with EXACTLY two underscores: `__RULE_NAME`
+   - Example: `header __SPAM_SUBJECT Subject =~ /pattern/i`
 
 2. **Content Type Detection**:
    - For HTML content: Use `rawbody` instead of `body`
@@ -119,64 +102,62 @@ Follow these precise formatting requirements:
 
 3. **URI Detection**:
    - For URL patterns: Use the `uri` tag, NOT `body`
-   - Example: `uri __SUSPICIOUS_URL /example\.com/i`
+   - Example: `uri __SUSPICIOUS_URL /example\\.com/i`
 
 4. **Header Format**:
    - Format: `header __HEADER_PATTERN Header-Name =~ /pattern/i`
-   - Do NOT use a processed header name; use the exact header field
+   - Use the exact header field name, not a processed version
 
-5. **Meta Rules**:
-   - Create meta rules to combine subrules
-   - Format: `meta FINAL_RULE_NAME (__SUBRULE1 && __SUBRULE2)`
-   - Meta rules should NOT start with underscores
+5. **Rule Documentation**:
+   - Provide a `describe` line for each subrule
+   - Format: `describe __RULE_NAME Description of what this rule detects`
 
-6. **Rule Documentation**:
-   - Provide a `describe` line for each rule
-   - Format: `describe RULE_NAME Description of what this rule detects`
+6. **Output Format**:
+   - Group related subrules by type (headers, URI, body, etc.)
+   - Present each subrule as a separate code block for easy copying
+   - Do NOT include meta rules or scores (these will be added separately)
 
-7. **Scores**:
-   - Only assign scores to meta rules, not subrules
-   - Format: `score RULE_NAME 3.0 # Justification for score`
-
-## Example Format:
-
-### Suspicious URL Detection
+## Example Header Subrules:
 
 ```
-# Subrules for URL detection
-uri        __SUSP_URL_TLD     /\.(bid|xyz|top)$/i
-describe   __SUSP_URL_TLD     URL with suspicious TLD
-
-uri        __SHORT_URL        /bit\.ly|goo\.gl/i
-describe   __SHORT_URL        Contains shortened URL
-
-# Meta rule combining the URL subrules
-meta       SUSPICIOUS_URLS    (__SUSP_URL_TLD || __SHORT_URL)
-describe   SUSPICIOUS_URLS    Email contains suspicious or shortened URLs
-score      SUSPICIOUS_URLS    2.5  # Moderate risk, common in spam
+header   __SPAM_SUBJECT_1   Subject =~ /\\[SPAM\\]/i
+describe __SPAM_SUBJECT_1   Subject line contains "[SPAM]"
 ```
 
-### Malicious Header Pattern
-
 ```
-# Subrule for header detection
-header     __FAKE_SENDER      From =~ /.*@(gmail|yahoo)\.com/i
-describe   __FAKE_SENDER      Suspicious sender pattern
-
-# Meta rule using the header subrule
-meta       FORGED_SENDER      (__FAKE_SENDER && !__HAS_DKIM)
-describe   FORGED_SENDER      Likely forged sender address
-score      FORGED_SENDER      3.0  # High risk of forgery
+header   __FAKE_SENDER      From =~ /.*@(gmail|yahoo)\\.com/i
+describe __FAKE_SENDER      Suspicious sender pattern
 ```
 
-Please create comprehensive rules following this format, focusing on patterns in the provided email data. Include explanations for each rule and justify your scoring decisions.
+## Example URI Subrules:
+
+```
+uri      __SUSP_URL_TLD     /\\.(bid|xyz|top)$/i
+describe __SUSP_URL_TLD     URL with suspicious TLD
+```
+
+```
+uri      __SHORT_URL        /bit\\.ly|goo\\.gl/i
+describe __SHORT_URL        Contains shortened URL
+```
+
+## Example Content Subrules:
+
+```
+rawbody  __HTML_HIDDEN      /<div[^>]+style=["']display:\\s*none["']/i
+describe __HTML_HIDDEN      HTML with hidden content
+```
+
+Focus ONLY on creating detection subrules that start with EXACTLY two underscores.
+DO NOT create meta rules or assign scores - these will be handled separately.
+Present each subrule in its own separate code block for easy selection and copying.
 """
             base_prompt.save()
             self.stdout.write(
                 self.style.SUCCESS(f"Updated base prompt: {base_prompt.name}")
             )
 
-        # Scoring module
+        # Enhanced Scoring module with more complete instructions
         scoring_module, created = PromptTemplate.objects.get_or_create(
             name="Scoring Module",
             defaults={
@@ -186,17 +167,28 @@ Please create comprehensive rules following this format, focusing on patterns in
                 "template": """
 ### Scoring Guidelines
 
-For each meta rule (not subrules), include a score value and justification:
+Take the subrules from above and create meta rules that combine them, then assign scores:
 
-```
-score    RULE_NAME   3.0   # Justification for score
-```
+1. **Meta Rule Creation**:
+   ```
+   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   describe   RULE_NAME      Combined rule description
+   ```
 
-Suggested scoring:
-- 0.5-1.0: Minor indicators with high false positive risk
-- 1.0-2.0: Moderate indicators
-- 2.0-3.0: Strong indicators
-- 3.0+: Very strong indicators with low false positive risk
+2. **Score Assignment**:
+   ```
+   score      RULE_NAME      3.0   # Justification for score
+   ```
+
+3. **Scoring Scale**:
+   - 0.5-1.0: Minor indicators with high false positive risk
+   - 1.0-2.0: Moderate indicators
+   - 2.0-3.0: Strong indicators
+   - 3.0+: Very strong indicators with low false positive risk
+
+4. **Output Format**:
+   - Present each meta rule with its score as a separate code block
+   - Include a brief justification comment with each score
 
 Remember that scores are ONLY applied to meta rules, not to subrules.
 """
@@ -211,52 +203,73 @@ Remember that scores are ONLY applied to meta rules, not to subrules.
             scoring_module.template = """
 ### Scoring Guidelines
 
-For each meta rule (not subrules), include a score value and justification:
+Take the subrules from above and create meta rules that combine them, then assign scores:
 
-```
-score    RULE_NAME   3.0   # Justification for score
-```
+1. **Meta Rule Creation**:
+   ```
+   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   describe   RULE_NAME      Combined rule description
+   ```
 
-Suggested scoring:
-- 0.5-1.0: Minor indicators with high false positive risk
-- 1.0-2.0: Moderate indicators
-- 2.0-3.0: Strong indicators
-- 3.0+: Very strong indicators with low false positive risk
+2. **Score Assignment**:
+   ```
+   score      RULE_NAME      3.0   # Justification for score
+   ```
+
+3. **Scoring Scale**:
+   - 0.5-1.0: Minor indicators with high false positive risk
+   - 1.0-2.0: Moderate indicators
+   - 2.0-3.0: Strong indicators
+   - 3.0+: Very strong indicators with low false positive risk
+
+4. **Output Format**:
+   - Present each meta rule with its score as a separate code block
+   - Include a brief justification comment with each score
 
 Remember that scores are ONLY applied to meta rules, not to subrules.
 """
             scoring_module.save()
             self.stdout.write(f"Updated module: {scoring_module.name}")
 
-        # Subrules module
+        # Enhanced Subrules module with better formatting instructions
         subrules_module, created = PromptTemplate.objects.get_or_create(
-            name="Subrules Module",
+            name="Meta Rules Module",
             defaults={
                 "is_module": True,
                 "module_type": "subrules",
-                "description": "Creates complex meta-rules that combine simpler rules",
+                "description": "Creates meta-rules that combine simpler rules",
                 "template": """
 ### Meta Rules Construction
 
-Create effective meta rules by combining subrules for better detection:
+Take the subrules from above and create effective meta rules by combining them:
 
+1. **Meta Rule Format**:
+   ```
+   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   describe   RULE_NAME      Combined rule description
+   ```
+
+2. **Logical Operators**:
+   - `&&` (AND): Both conditions must match
+   - `||` (OR): Either condition can match
+   - `!` (NOT): Invert the condition
+
+3. **Best Practices**:
+   - Create focused meta rules that target specific spam characteristics
+   - Combine related subrules that reinforce each other
+   - Use descriptive names without underscores for meta rules
+   - Avoid overly complex combinations that are hard to understand
+
+4. **Output Format**:
+   - Present each meta rule as a separate code block
+   - Group related meta rules together
+   - Include clear descriptions
+
+Example meta rule:
 ```
-# First create individual subrules with double underscore prefix
-header   __SPAM_HEADER_1   From =~ /pattern1/i
-uri      __SPAM_URI_1      /pattern2/i
-
-# Then combine them with a meta rule (no underscores)
-meta     SPAM_META         (__SPAM_HEADER_1 && __SPAM_URI_1)
-describe SPAM_META         Combined spam patterns
-score    SPAM_META         2.5   # Moderate confidence, reasonable risk
+meta       SUSPICIOUS_URL_COMBO   (__SUSP_URL_TLD && (__SHORT_URL || __REDIRECT_URL))
+describe   SUSPICIOUS_URL_COMBO   Combines multiple suspicious URL indicators
 ```
-
-Use logical operators (&&, ||, !) to create sophisticated combinations:
-- `&&` (AND): Both conditions must match
-- `||` (OR): Either condition can match
-- `!` (NOT): Invert the condition
-
-Avoid creating too many individual rules - it's better to have fewer, more comprehensive meta rules that combine multiple indicators.
 """
             }
         )
@@ -269,28 +282,41 @@ Avoid creating too many individual rules - it's better to have fewer, more compr
             subrules_module.template = """
 ### Meta Rules Construction
 
-Create effective meta rules by combining subrules for better detection:
+Take the subrules from above and create effective meta rules by combining them:
 
+1. **Meta Rule Format**:
+   ```
+   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   describe   RULE_NAME      Combined rule description
+   ```
+
+2. **Logical Operators**:
+   - `&&` (AND): Both conditions must match
+   - `||` (OR): Either condition can match
+   - `!` (NOT): Invert the condition
+
+3. **Best Practices**:
+   - Create focused meta rules that target specific spam characteristics
+   - Combine related subrules that reinforce each other
+   - Use descriptive names without underscores for meta rules
+   - Avoid overly complex combinations that are hard to understand
+
+4. **Output Format**:
+   - Present each meta rule as a separate code block
+   - Group related meta rules together
+   - Include clear descriptions
+
+Example meta rule:
 ```
-# First create individual subrules with double underscore prefix
-header   __SPAM_HEADER_1   From =~ /pattern1/i
-uri      __SPAM_URI_1      /pattern2/i
-
-# Then combine them with a meta rule (no underscores)
-meta     SPAM_META         (__SPAM_HEADER_1 && __SPAM_URI_1)
-describe SPAM_META         Combined spam patterns
-score    SPAM_META         2.5   # Moderate confidence, reasonable risk
+meta       SUSPICIOUS_URL_COMBO   (__SUSP_URL_TLD && (__SHORT_URL || __REDIRECT_URL))
+describe   SUSPICIOUS_URL_COMBO   Combines multiple suspicious URL indicators
 ```
-
-Use logical operators (&&, ||, !) to create sophisticated combinations:
-- `&&` (AND): Both conditions must match
-- `||` (OR): Either condition can match
-- `!` (NOT): Invert the condition
-
-Avoid creating too many individual rules - it's better to have fewer, more comprehensive meta rules that combine multiple indicators.
 """
             subrules_module.save()
             self.stdout.write(f"Updated module: {subrules_module.name}")
+
+        # Continue updating the other modules with similar improvements
+        # (notes_module, uri_module, html_module)
 
         # Notes module
         notes_module, created = PromptTemplate.objects.get_or_create(
@@ -300,24 +326,33 @@ Avoid creating too many individual rules - it's better to have fewer, more compr
                 "module_type": "notes",
                 "description": "Adds detailed explanations about false positives",
                 "template": """
-### False Positive Prevention
+### Rule Explanations and False Positive Prevention
 
-Include notes on how your rules minimize false positives:
+For the subrules and meta rules above, provide detailed explanations separated from the rule code:
 
-1. **Header Rules**: How specific patterns prevent matching legitimate emails
-2. **URI Rules**: How pattern specificity reduces false matches
-3. **Meta Rules Advantage**: Explain how combining multiple indicators reduces false positives
-4. **Testing Recommendations**: Suggest ways to test the rules in a safe environment
+1. **Explanation Format**:
+   - Present explanations as markdown text, NOT within code blocks
+   - Refer to rules by name and explain their purpose and design
 
-For each meta rule that has a high risk of false positives, include specific notes:
+2. **Areas to Address**:
+   - How the patterns were selected to target specific spam characteristics
+   - Why certain combinations were chosen for meta rules
+   - Potential false positive scenarios and how they're mitigated
+   - Testing recommendations before deploying in production
 
-```
-# Note: META_RULE is specific enough to avoid matching legitimate communications
-# because it requires multiple specific patterns to match simultaneously:
-#  - __SUBRULE1 matches specific spam pattern A
-#  - __SUBRULE2 matches specific spam pattern B
-#  - Legitimate emails rarely contain both patterns
-```
+3. **Example**:
+
+The `__SPAM_SUBJECT_1` rule targets emails with an explicit spam marker in the subject.
+This pattern has very low false positive risk since
+legitimate emails rarely contain "[SPAM]" in the subject.
+
+The `SUSPICIOUS_URL_COMBO` meta rule combines multiple URL indicators to reduce false positives.
+It requires both a suspicious TLD and either a URL shortener or redirect pattern to trigger,
+which is unlikely to occur in legitimate business communications.
+
+4. **Testing Recommendations**:
+   - Suggest methods for safely testing the rules
+   - Explain any thresholds or adjustments that might be needed
 """
             }
         )
@@ -328,24 +363,33 @@ For each meta rule that has a high risk of false positives, include specific not
         else:
             # Update the template if it already exists
             notes_module.template = """
-### False Positive Prevention
+### Rule Explanations and False Positive Prevention
 
-Include notes on how your rules minimize false positives:
+For the subrules and meta rules above, provide detailed explanations separated from the rule code:
 
-1. **Header Rules**: How specific patterns prevent matching legitimate emails
-2. **URI Rules**: How pattern specificity reduces false matches
-3. **Meta Rules Advantage**: Explain how combining multiple indicators reduces false positives
-4. **Testing Recommendations**: Suggest ways to test the rules in a safe environment
+1. **Explanation Format**:
+   - Present explanations as markdown text, NOT within code blocks
+   - Refer to rules by name and explain their purpose and design
 
-For each meta rule that has a high risk of false positives, include specific notes:
+2. **Areas to Address**:
+   - How the patterns were selected to target specific spam characteristics
+   - Why certain combinations were chosen for meta rules
+   - Potential false positive scenarios and how they're mitigated
+   - Testing recommendations before deploying in production
 
-```
-# Note: META_RULE is specific enough to avoid matching legitimate communications
-# because it requires multiple specific patterns to match simultaneously:
-#  - __SUBRULE1 matches specific spam pattern A
-#  - __SUBRULE2 matches specific spam pattern B
-#  - Legitimate emails rarely contain both patterns
-```
+3. **Example**:
+
+The `__SPAM_SUBJECT_1` rule targets emails with an explicit spam marker in the subject.
+This pattern has very low false positive risk since
+legitimate emails rarely contain "[SPAM]" in the subject.
+
+The `SUSPICIOUS_URL_COMBO` meta rule combines multiple URL indicators to reduce false positives.
+It requires both a suspicious TLD and either a URL shortener or redirect pattern to trigger,
+which is unlikely to occur in legitimate business communications.
+
+4. **Testing Recommendations**:
+   - Suggest methods for safely testing the rules
+   - Explain any thresholds or adjustments that might be needed
 """
             notes_module.save()
             self.stdout.write(f"Updated module: {notes_module.name}")
@@ -360,28 +404,43 @@ For each meta rule that has a high risk of false positives, include specific not
                 "template": """
 ### URI Detection Rules
 
-Create specialized rules to detect suspicious URLs in emails:
+Based on the email data above, create specialized subrules to detect suspicious URLs:
+
+1. **URI Rule Format**:
+   ```
+   uri      __RULE_NAME      /pattern/i
+   describe __RULE_NAME      Description of URL pattern
+   ```
+
+2. **Effective Patterns to Target**:
+   - Suspicious TLDs (.bid, .xyz, etc.)
+   - URL shortening services
+   - Numeric IP addresses in URLs
+   - Misleading domains mimicking legitimate sites
+   - Encoded/obfuscated URLs
+   - Suspicious URL parameters
+
+3. **Output Format**:
+   - Present each URI subrule as a separate code block
+   - Group similar URL patterns together
+   - Use precise regex patterns to minimize false positives
+
+Examples:
 
 ```
-# Subrules for URL pattern detection
-uri      __SUSP_URI_PATTERN    /suspicious-pattern/i
-describe __SUSP_URI_PATTERN    URL containing suspicious pattern
-
-uri      __SHORT_URL_SERVICE   /bit\.ly|tinyurl|goo\.gl/i
-describe __SHORT_URL_SERVICE   URL using a link shortening service
-
-# Meta rule combining URI patterns
-meta     SUSPICIOUS_LINKS      (__SUSP_URI_PATTERN || __SHORT_URL_SERVICE)
-describe SUSPICIOUS_LINKS      Email contains suspicious URL patterns
-score    SUSPICIOUS_LINKS      2.0   # Medium risk - many spam emails use questionable links
+uri      __SUSP_TLD_BID     /\\.bid\\b/i
+describe __SUSP_TLD_BID     URL using suspicious .bid TLD
 ```
 
-Focus on detecting:
-- Suspicious TLDs (.bid, .xyz, etc.)
-- URL shortening services
-- Numeric IP addresses in URLs
-- Misleading domains that mimic legitimate sites
-- Encoded/obfuscated URLs
+```
+uri      __URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
+describe __URL_SHORTENER    URL using common shortening service
+```
+
+```
+uri      __NUMERIC_IP_URL   /https?:\\/\\/\\d+\\.\\d+\\.\\d+\\.\\d+/i
+describe __NUMERIC_IP_URL   URL using numeric IP address instead of domain
+```
 """
             }
         )
@@ -394,33 +453,48 @@ Focus on detecting:
             uri_module.template = """
 ### URI Detection Rules
 
-Create specialized rules to detect suspicious URLs in emails:
+Based on the email data above, create specialized subrules to detect suspicious URLs:
+
+1. **URI Rule Format**:
+   ```
+   uri      __RULE_NAME      /pattern/i
+   describe __RULE_NAME      Description of URL pattern
+   ```
+
+2. **Effective Patterns to Target**:
+   - Suspicious TLDs (.bid, .xyz, etc.)
+   - URL shortening services
+   - Numeric IP addresses in URLs
+   - Misleading domains mimicking legitimate sites
+   - Encoded/obfuscated URLs
+   - Suspicious URL parameters
+
+3. **Output Format**:
+   - Present each URI subrule as a separate code block
+   - Group similar URL patterns together
+   - Use precise regex patterns to minimize false positives
+
+Examples:
 
 ```
-# Subrules for URL pattern detection
-uri      __SUSP_URI_PATTERN    /suspicious-pattern/i
-describe __SUSP_URI_PATTERN    URL containing suspicious pattern
-
-uri      __SHORT_URL_SERVICE   /bit\.ly|tinyurl|goo\.gl/i
-describe __SHORT_URL_SERVICE   URL using a link shortening service
-
-# Meta rule combining URI patterns
-meta     SUSPICIOUS_LINKS      (__SUSP_URI_PATTERN || __SHORT_URL_SERVICE)
-describe SUSPICIOUS_LINKS      Email contains suspicious URL patterns
-score    SUSPICIOUS_LINKS      2.0   # Medium risk - many spam emails use questionable links
+uri      __SUSP_TLD_BID     /\\.bid\\b/i
+describe __SUSP_TLD_BID     URL using suspicious .bid TLD
 ```
 
-Focus on detecting:
-- Suspicious TLDs (.bid, .xyz, etc.)
-- URL shortening services
-- Numeric IP addresses in URLs
-- Misleading domains that mimic legitimate sites
-- Encoded/obfuscated URLs
+```
+uri      __URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
+describe __URL_SHORTENER    URL using common shortening service
+```
+
+```
+uri      __NUMERIC_IP_URL   /https?:\\/\\/\\d+\\.\\d+\\.\\d+\\.\\d+/i
+describe __NUMERIC_IP_URL   URL using numeric IP address instead of domain
+```
 """
             uri_module.save()
             self.stdout.write(f"Updated module: {uri_module.name}")
 
-        # HTML Content module - new module
+        # HTML Content module
         html_module, created = PromptTemplate.objects.get_or_create(
             name="HTML Content Module",
             defaults={
@@ -430,28 +504,43 @@ Focus on detecting:
                 "template": """
 ### HTML Content Detection Rules
 
-Create specialized rules to detect suspicious HTML patterns in emails:
+Based on the email data above, create specialized subrules to detect suspicious HTML patterns:
+
+1. **HTML Rule Format**:
+   ```
+   rawbody  __RULE_NAME      /pattern/i
+   describe __RULE_NAME      Description of HTML pattern
+   ```
+
+2. **Effective Patterns to Target**:
+   - Hidden content (display:none, visibility:hidden)
+   - Image-only emails
+   - Excessive obfuscation techniques
+   - Malformed HTML that might trick rendering
+   - Scripts or other active content
+   - Text/background color tricks
+
+3. **Output Format**:
+   - Present each HTML subrule as a separate code block
+   - Group similar HTML patterns together
+   - Use precise regex patterns to minimize false positives
+
+Examples:
 
 ```
-# Subrules for HTML pattern detection
-rawbody  __HTML_OBFUSCATION    /<div[^>]+style=["']display:\\s*none["']/i
-describe __HTML_OBFUSCATION    HTML with hidden content 
-
-rawbody  __SINGLE_IMAGE_BODY   /<body[^>]*>\\s*<img[^>]+>\\s*<\\/body>/i
-describe __SINGLE_IMAGE_BODY   Email body consists of only an image
-
-# Meta rule combining HTML patterns
-meta     SUSPICIOUS_HTML       (__HTML_OBFUSCATION || __SINGLE_IMAGE_BODY)
-describe SUSPICIOUS_HTML       Email contains suspicious HTML patterns
-score    SUSPICIOUS_HTML       2.5   # Higher risk - specifically crafted to evade text filters
+rawbody  __HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
+describe __HTML_HIDDEN_DIV  HTML with hidden div content
 ```
 
-Focus on detecting:
-- Hidden content (display:none, visibility:hidden, etc.)
-- Image-only emails
-- Excessive obfuscation techniques
-- Malformed HTML that might trick rendering engines
-- Scripts or other active content
+```
+rawbody  __HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
+describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
+```
+
+```
+rawbody  __SINGLE_IMG_BODY  /<body[^>]*>\\s*<img[^>]+>\\s*<\\/body>/i
+describe __SINGLE_IMG_BODY  Email body consists of only an image
+```
 """
             }
         )
@@ -464,28 +553,43 @@ Focus on detecting:
             html_module.template = """
 ### HTML Content Detection Rules
 
-Create specialized rules to detect suspicious HTML patterns in emails:
+Based on the email data above, create specialized subrules to detect suspicious HTML patterns:
+
+1. **HTML Rule Format**:
+   ```
+   rawbody  __RULE_NAME      /pattern/i
+   describe __RULE_NAME      Description of HTML pattern
+   ```
+
+2. **Effective Patterns to Target**:
+   - Hidden content (display:none, visibility:hidden)
+   - Image-only emails
+   - Excessive obfuscation techniques
+   - Malformed HTML that might trick rendering
+   - Scripts or other active content
+   - Text/background color tricks
+
+3. **Output Format**:
+   - Present each HTML subrule as a separate code block
+   - Group similar HTML patterns together
+   - Use precise regex patterns to minimize false positives
+
+Examples:
 
 ```
-# Subrules for HTML pattern detection
-rawbody  __HTML_OBFUSCATION    /<div[^>]+style=["']display:\\s*none["']/i
-describe __HTML_OBFUSCATION    HTML with hidden content 
-
-rawbody  __SINGLE_IMAGE_BODY   /<body[^>]*>\\s*<img[^>]+>\\s*<\\/body>/i
-describe __SINGLE_IMAGE_BODY   Email body consists of only an image
-
-# Meta rule combining HTML patterns
-meta     SUSPICIOUS_HTML       (__HTML_OBFUSCATION || __SINGLE_IMAGE_BODY)
-describe SUSPICIOUS_HTML       Email contains suspicious HTML patterns
-score    SUSPICIOUS_HTML       2.5   # Higher risk - specifically crafted to evade text filters
+rawbody  __HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
+describe __HTML_HIDDEN_DIV  HTML with hidden div content
 ```
 
-Focus on detecting:
-- Hidden content (display:none, visibility:hidden, etc.)
-- Image-only emails
-- Excessive obfuscation techniques
-- Malformed HTML that might trick rendering engines
-- Scripts or other active content
+```
+rawbody  __HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
+describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
+```
+
+```
+rawbody  __SINGLE_IMG_BODY  /<body[^>]*>\\s*<img[^>]+>\\s*<\\/body>/i
+describe __SINGLE_IMG_BODY  Email body consists of only an image
+```
 """
             html_module.save()
             self.stdout.write(f"Updated module: {html_module.name}")
