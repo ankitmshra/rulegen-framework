@@ -58,6 +58,12 @@ function Header({ currentWorkspace }) {
                             >
                                 History
                             </Link>
+                            <Link
+                                to="/prompts"
+                                className={`${isActive('/prompts') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
+                            >
+                                Prompt Manager
+                            </Link>
                         </nav>
                         <button
                             onClick={handleCreateNew}
@@ -90,6 +96,13 @@ function Header({ currentWorkspace }) {
                                 onClick={() => setMobileMenuOpen(false)}
                             >
                                 History
+                            </Link>
+                            <Link
+                                to="/prompts"
+                                className={`${isActive('/prompts') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
+                                onClick={() => setMobileMenuOpen(false)}
+                            >
+                                Prompt Manager
                             </Link>
                             <button
                                 onClick={() => {

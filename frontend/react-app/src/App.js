@@ -4,6 +4,7 @@ import Header from './components/Header';
 import WorkspaceSelector from './components/WorkspaceSelector';
 import RuleGeneration from './components/RuleGeneration';
 import History from './components/History';
+import PromptManager from './components/PromptManager';
 import './index.css';
 
 function App() {
@@ -83,6 +84,10 @@ function App() {
                   restorePreviousWorkspace={restorePreviousWorkspace}
                 />
               }
+            />
+            <Route
+              path="/prompts"
+              element={<PromptManager />}
             />
           </Routes>
         </main>
