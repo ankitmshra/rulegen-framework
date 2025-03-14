@@ -29,6 +29,8 @@ class RuleGeneration(models.Model):
     selected_headers = models.JSONField()
     prompt = models.TextField()
     prompt_modules = models.JSONField(default=list)
+    base_prompt_id = models.IntegerField(null=True, blank=True)
+    prompt_metadata = models.JSONField(default=dict, blank=True)
     rule = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     is_complete = models.BooleanField(default=False)

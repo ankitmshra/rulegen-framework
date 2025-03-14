@@ -42,13 +42,14 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
         child=serializers.CharField(),
         required=False
     )
+    base_prompt_id = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = RuleGeneration
         fields = ['id', 'workspace_name', 'email_files', 'email_file_ids', 'selected_headers',
                   'prompt', 'rule', 'created_at', 'is_complete',
-                  'custom_prompt', 'prompt_modules']
-        read_only_fields = ['rule', 'created_at', 'is_complete']
+                  'custom_prompt', 'prompt_modules', 'base_prompt_id', 'prompt_metadata']
+        read_only_fields = ['rule', 'created_at', 'is_complete', 'prompt_metadata']
         extra_kwargs = {
             'prompt': {'required': False},  # Make prompt field optional
             # Make workspace_name optional for backwards compatibility

@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from .models import EmailFile, RuleGeneration, PromptTemplate
 from .serializers import EmailFileSerializer, RuleGenerationSerializer, PromptTemplateSerializer
 from .services import SpamGenieService
+from .prompt_manager import PromptManager
 import threading
 import os
 from django.conf import settings
@@ -62,13 +63,21 @@ class PromptTemplateViewSet(viewsets.ModelViewSet):
     def base(self, request):
         """Get the base prompt template."""
         try:
-            base_prompt = PromptTemplate.objects.get(is_base=True)
-            serializer = self.get_serializer(base_prompt)
+            # Using PromptManager to get base prompts
+            base_prompts = PromptManager.get_base_prompts()
+            if not base_prompts:
+                return Response(
+                    {"error": "No base prompt template found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Return the first one for backward compatibility
+            serializer = self.get_serializer(base_prompts.first())
             return Response(serializer.data, status=status.HTTP_200_OK)
-        except PromptTemplate.DoesNotExist:
+        except Exception as e:
             return Response(
-                {"error": "No base prompt template found"},
-                status=status.HTTP_404_NOT_FOUND
+                {"error": f"Error retrieving base prompt: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
@@ -114,6 +123,19 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
 
         return Response(workspaces, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'])
+    def base_prompts(self, request):
+        """Get all available base prompts."""
+        try:
+            # Using PromptManager to get base prompts
+            base_prompts = PromptManager.get_base_prompts()
+            serializer = PromptTemplateSerializer(base_prompts, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['post'])
     def generate_default_prompt(self, request):
         """Generate a default prompt without saving."""
@@ -122,7 +144,8 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
             temp_rule_generation = RuleGeneration(
                 selected_headers=request.data.get('selected_headers', []),
                 prompt_modules=request.data.get('prompt_modules', []),
-                workspace_name=request.data.get('workspace_name', 'Temporary Workspace')
+                workspace_name=request.data.get('workspace_name', 'Temporary Workspace'),
+                base_prompt_id=request.data.get('base_prompt_id')
             )
 
             # Add email files to the temporary object
@@ -136,11 +159,15 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
             # Generate the prompt
             prompt = SpamGenieService.generate_prompt(temp_rule_generation)
 
+            # Get metadata
+            metadata = temp_rule_generation.prompt_metadata
+
             # Delete the temporary object
             temp_rule_generation.delete()
 
             return Response({
-                'prompt': prompt
+                'prompt': prompt,
+                'metadata': metadata
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({

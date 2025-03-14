@@ -145,6 +145,7 @@ class SpamGenieService:
         selected_keys = rule_generation.selected_headers
         email_files = rule_generation.email_files.all()
         selected_modules = rule_generation.prompt_modules or []
+        base_prompt_id = rule_generation.base_prompt_id
 
         analysis_data = []
         for email_file in email_files:
@@ -163,9 +164,14 @@ class SpamGenieService:
             analysis_data[0]['common_patterns'] = common_patterns
 
         # Use PromptManager to build the prompt
-        prompt = PromptManager.build_prompt(analysis_data, selected_modules)
+        prompt_data = PromptManager.build_prompt(analysis_data, selected_modules, base_prompt_id)
 
-        return prompt
+        # Store metadata in rule_generation if it's not already set
+        if not rule_generation.prompt_metadata:
+            rule_generation.prompt_metadata = prompt_data.get('metadata', {})
+            rule_generation.save(update_fields=['prompt_metadata'])
+
+        return prompt_data['prompt']
 
     @staticmethod
     def query_gemini(prompt: str) -> str:
