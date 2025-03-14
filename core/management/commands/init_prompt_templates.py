@@ -8,12 +8,12 @@ class Command(BaseCommand):
     help = 'Initialize default prompt templates'
 
     def handle(self, *args, **options):
-        # Base prompt - focused only on subrule generation, removed scoring instructions
+        # Base prompt - minimalist with core instructions only
         base_prompt, created = PromptTemplate.objects.get_or_create(
             name="Base SpamAssassin Rule Generation",
             defaults={
                 "is_base": True,
-                "description": "Basic prompt for generating SpamAssassin subrules only",
+                "description": "Minimalist prompt for generating basic SpamAssassin subrules",
                 "template": """
 As a SpamAssassin expert, analyze this spam email data and create effective detection subrules.
 
@@ -23,52 +23,19 @@ SPAM EMAIL ANALYSIS:
 Email Body Samples:
 {EMAIL_BODY}
 
-## ⚠️ CRITICAL FORMAT REQUIREMENT ⚠️
-All subrules MUST start with EXACTLY TWO underscores: __RULE_NAME
-DO NOT use more or fewer underscores. EXACTLY TWO.
+## Core Requirements
 
-## SpamAssassin Subrule Instructions
+1. Create detection subrules that start with EXACTLY two underscores: `__RULE_NAME`
+2. Each subrule must have a corresponding describe line
+3. Present each subrule in its own code block
+4. DO NOT create meta rules or assign scores
 
-1. **Subrule Format**:
-   - Create rules like this: `header __SPAM_SUBJECT Subject =~ /pattern/i`
-   - WRONG: `header ____SPAM_SUBJECT Subject =~ /pattern/i`
-   - WRONG: `header _SPAM_SUBJECT Subject =~ /pattern/i`
-   - CORRECT: `header __SPAM_SUBJECT Subject =~ /pattern/i`
-
-2. **Content Type Detection**:
-   - For HTML content: Use `rawbody __HTML_PATTERN /pattern/i`
-   - For plain text: Use `body __TEXT_PATTERN /pattern/i`
-
-3. **URI Detection**:
-   - For URL patterns: Use `uri __SUSPICIOUS_URL /example\\.com/i`
-
-4. **Rule Documentation**:
-   - Document rules with: `describe __RULE_NAME Description of what this rule detects`
-   - The rule name in describe MUST match exactly the name used in the rule
-
-5. **Output Format**:
-   - Group related subrules by type (headers, URI, body, etc.)
-   - Present each subrule + describe as a separate code block for easy copying
-
-## Example Correct Subrules:
+## Basic Example:
 
 ```
-header   __SPAM_SUBJECT_1   Subject =~ /\\[SPAM\\]/i
-describe __SPAM_SUBJECT_1   Subject line contains "[SPAM]"
+header   __SPAM_SUBJECT   Subject =~ /pattern/i
+describe __SPAM_SUBJECT   Subject line contains suspicious pattern
 ```
-
-```
-uri      __SUSP_URL_TLD     /\\.(bid|xyz|top)$/i
-describe __SUSP_URL_TLD     URL with suspicious TLD
-```
-
-```
-rawbody  __HTML_HIDDEN      /<div[^>]+style=["']display:\\s*none["']/i
-describe __HTML_HIDDEN      HTML with hidden content
-```
-
-DO NOT create meta rules or assign scores - these will be handled separately.
-Every rule name MUST start with EXACTLY TWO underscores - no more, no less.
 """
             }
         )
@@ -88,76 +55,26 @@ SPAM EMAIL ANALYSIS:
 Email Body Samples:
 {EMAIL_BODY}
 
-## SpamAssassin Subrule Instructions
+## Core Requirements
 
-Your task is to generate ONLY subrules (not meta rules or scoring) following these requirements:
+1. Create detection subrules that start with EXACTLY two underscores: `__RULE_NAME`
+2. Each subrule must have a corresponding describe line
+3. Present each subrule in its own code block
+4. DO NOT create meta rules or assign scores
 
-1. **Subrule Format**:
-   - All subrules MUST start with EXACTLY two underscores: `__RULE_NAME`
-   - Example: `header __SPAM_SUBJECT Subject =~ /pattern/i`
-
-2. **Content Type Detection**:
-   - For HTML content: Use `rawbody` instead of `body`
-   - Example: `rawbody __HTML_PATTERN /pattern/i`
-
-3. **URI Detection**:
-   - For URL patterns: Use the `uri` tag, NOT `body`
-   - Example: `uri __SUSPICIOUS_URL /example\\.com/i`
-
-4. **Header Format**:
-   - Format: `header __HEADER_PATTERN Header-Name =~ /pattern/i`
-   - Use the exact header field name, not a processed version
-
-5. **Rule Documentation**:
-   - Provide a `describe` line for each subrule
-   - Format: `describe __RULE_NAME Description of what this rule detects`
-
-6. **Output Format**:
-   - Group related subrules by type (headers, URI, body, etc.)
-   - Present each subrule as a separate code block for easy copying
-   - Do NOT include meta rules or scores (these will be added separately)
-
-## Example Header Subrules:
+## Basic Example:
 
 ```
-header   __SPAM_SUBJECT_1   Subject =~ /\\[SPAM\\]/i
-describe __SPAM_SUBJECT_1   Subject line contains "[SPAM]"
+header   __SPAM_SUBJECT   Subject =~ /pattern/i
+describe __SPAM_SUBJECT   Subject line contains suspicious pattern
 ```
-
-```
-header   __FAKE_SENDER      From =~ /.*@(gmail|yahoo)\\.com/i
-describe __FAKE_SENDER      Suspicious sender pattern
-```
-
-## Example URI Subrules:
-
-```
-uri      __SUSP_URL_TLD     /\\.(bid|xyz|top)$/i
-describe __SUSP_URL_TLD     URL with suspicious TLD
-```
-
-```
-uri      __SHORT_URL        /bit\\.ly|goo\\.gl/i
-describe __SHORT_URL        Contains shortened URL
-```
-
-## Example Content Subrules:
-
-```
-rawbody  __HTML_HIDDEN      /<div[^>]+style=["']display:\\s*none["']/i
-describe __HTML_HIDDEN      HTML with hidden content
-```
-
-Focus ONLY on creating detection subrules that start with EXACTLY two underscores.
-DO NOT create meta rules or assign scores - these will be handled separately.
-Present each subrule in its own separate code block for easy selection and copying.
 """
             base_prompt.save()
             self.stdout.write(
                 self.style.SUCCESS(f"Updated base prompt: {base_prompt.name}")
             )
 
-        # Enhanced Scoring module with more complete instructions
+        # Enhanced Scoring module
         scoring_module, created = PromptTemplate.objects.get_or_create(
             name="Scoring Module",
             defaults={
@@ -231,7 +148,7 @@ Remember that scores are ONLY applied to meta rules, not to subrules.
             scoring_module.save()
             self.stdout.write(f"Updated module: {scoring_module.name}")
 
-        # Enhanced Subrules module with better formatting instructions
+        # Meta Rules module
         subrules_module, created = PromptTemplate.objects.get_or_create(
             name="Meta Rules Module",
             defaults={
@@ -259,11 +176,6 @@ Take the subrules from above and create effective meta rules by combining them:
    - Combine related subrules that reinforce each other
    - Use descriptive names without underscores for meta rules
    - Avoid overly complex combinations that are hard to understand
-
-4. **Output Format**:
-   - Present each meta rule as a separate code block
-   - Group related meta rules together
-   - Include clear descriptions
 
 Example meta rule:
 ```
@@ -301,11 +213,6 @@ Take the subrules from above and create effective meta rules by combining them:
    - Use descriptive names without underscores for meta rules
    - Avoid overly complex combinations that are hard to understand
 
-4. **Output Format**:
-   - Present each meta rule as a separate code block
-   - Group related meta rules together
-   - Include clear descriptions
-
 Example meta rule:
 ```
 meta       SUSPICIOUS_URL_COMBO   (__SUSP_URL_TLD && (__SHORT_URL || __REDIRECT_URL))
@@ -314,9 +221,6 @@ describe   SUSPICIOUS_URL_COMBO   Combines multiple suspicious URL indicators
 """
             subrules_module.save()
             self.stdout.write(f"Updated module: {subrules_module.name}")
-
-        # Continue updating the other modules with similar improvements
-        # (notes_module, uri_module, html_module)
 
         # Notes module
         notes_module, created = PromptTemplate.objects.get_or_create(
@@ -404,7 +308,7 @@ which is unlikely to occur in legitimate business communications.
                 "template": """
 ### URI Detection Rules
 
-Based on the email data above, create specialized subrules to detect suspicious URLs:
+Create specialized subrules to detect suspicious URLs in the email data:
 
 1. **URI Rule Format**:
    ```
@@ -420,11 +324,6 @@ Based on the email data above, create specialized subrules to detect suspicious 
    - Encoded/obfuscated URLs
    - Suspicious URL parameters
 
-3. **Output Format**:
-   - Present each URI subrule as a separate code block
-   - Group similar URL patterns together
-   - Use precise regex patterns to minimize false positives
-
 Examples:
 
 ```
@@ -435,11 +334,6 @@ describe __SUSP_TLD_BID     URL using suspicious .bid TLD
 ```
 uri      __URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
 describe __URL_SHORTENER    URL using common shortening service
-```
-
-```
-uri      __NUMERIC_IP_URL   /https?:\\/\\/\\d+\\.\\d+\\.\\d+\\.\\d+/i
-describe __NUMERIC_IP_URL   URL using numeric IP address instead of domain
 ```
 """
             }
@@ -453,7 +347,7 @@ describe __NUMERIC_IP_URL   URL using numeric IP address instead of domain
             uri_module.template = """
 ### URI Detection Rules
 
-Based on the email data above, create specialized subrules to detect suspicious URLs:
+Create specialized subrules to detect suspicious URLs in the email data:
 
 1. **URI Rule Format**:
    ```
@@ -469,11 +363,6 @@ Based on the email data above, create specialized subrules to detect suspicious 
    - Encoded/obfuscated URLs
    - Suspicious URL parameters
 
-3. **Output Format**:
-   - Present each URI subrule as a separate code block
-   - Group similar URL patterns together
-   - Use precise regex patterns to minimize false positives
-
 Examples:
 
 ```
@@ -484,11 +373,6 @@ describe __SUSP_TLD_BID     URL using suspicious .bid TLD
 ```
 uri      __URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
 describe __URL_SHORTENER    URL using common shortening service
-```
-
-```
-uri      __NUMERIC_IP_URL   /https?:\\/\\/\\d+\\.\\d+\\.\\d+\\.\\d+/i
-describe __NUMERIC_IP_URL   URL using numeric IP address instead of domain
 ```
 """
             uri_module.save()
@@ -504,7 +388,7 @@ describe __NUMERIC_IP_URL   URL using numeric IP address instead of domain
                 "template": """
 ### HTML Content Detection Rules
 
-Based on the email data above, create specialized subrules to detect suspicious HTML patterns:
+Create specialized subrules to detect suspicious HTML patterns in the email:
 
 1. **HTML Rule Format**:
    ```
@@ -520,11 +404,6 @@ Based on the email data above, create specialized subrules to detect suspicious 
    - Scripts or other active content
    - Text/background color tricks
 
-3. **Output Format**:
-   - Present each HTML subrule as a separate code block
-   - Group similar HTML patterns together
-   - Use precise regex patterns to minimize false positives
-
 Examples:
 
 ```
@@ -535,11 +414,6 @@ describe __HTML_HIDDEN_DIV  HTML with hidden div content
 ```
 rawbody  __HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
 describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
-```
-
-```
-rawbody  __SINGLE_IMG_BODY  /<body[^>]*>\\s*<img[^>]+>\\s*<\\/body>/i
-describe __SINGLE_IMG_BODY  Email body consists of only an image
 ```
 """
             }
@@ -553,7 +427,7 @@ describe __SINGLE_IMG_BODY  Email body consists of only an image
             html_module.template = """
 ### HTML Content Detection Rules
 
-Based on the email data above, create specialized subrules to detect suspicious HTML patterns:
+Create specialized subrules to detect suspicious HTML patterns in the email:
 
 1. **HTML Rule Format**:
    ```
@@ -569,11 +443,6 @@ Based on the email data above, create specialized subrules to detect suspicious 
    - Scripts or other active content
    - Text/background color tricks
 
-3. **Output Format**:
-   - Present each HTML subrule as a separate code block
-   - Group similar HTML patterns together
-   - Use precise regex patterns to minimize false positives
-
 Examples:
 
 ```
@@ -584,11 +453,6 @@ describe __HTML_HIDDEN_DIV  HTML with hidden div content
 ```
 rawbody  __HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
 describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
-```
-
-```
-rawbody  __SINGLE_IMG_BODY  /<body[^>]*>\\s*<img[^>]+>\\s*<\\/body>/i
-describe __SINGLE_IMG_BODY  Email body consists of only an image
 ```
 """
             html_module.save()
