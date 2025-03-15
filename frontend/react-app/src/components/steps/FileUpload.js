@@ -1,33 +1,37 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import api from '../../api';
 
-function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
+function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
     const [isDragging, setIsDragging] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState({});
     const fileInputRef = useRef(null);
+    const [isLoading, setIsLoading] = useState(false);
 
+    // Fetch email files whenever the workspace changes
     useEffect(() => {
-        // Fetch existing email files when component mounts
-        if (emailFiles.length === 0) {
+        if (workspace) {
             fetchEmailFiles();
+        } else {
+            // Reset email files if no workspace
+            setEmailFiles([]);
         }
-    }, []);
+    }, [workspace?.name]); // Depend on workspace name to detect changes
 
     const fetchEmailFiles = useCallback(async () => {
+        if (!workspace) return;
+        
         try {
-            const response = await api.get('/api/email-files/');
+            setIsLoading(true);
+            // Get email files for this specific workspace by including workspace ID in the request
+            const response = await api.get(`/api/email-files/?workspace=${workspace.ruleGenerationId || ''}`);
             setEmailFiles(response.data);
         } catch (error) {
             console.error('Error fetching email files:', error);
+        } finally {
+            setIsLoading(false);
         }
-    }, [setEmailFiles]); // Include setEmailFiles as dependency
-
-    useEffect(() => {
-        if (emailFiles.length === 0) {
-            fetchEmailFiles();
-        }
-    }, [emailFiles.length, fetchEmailFiles]);
+    }, [workspace, setEmailFiles]);
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -93,6 +97,11 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
         const formData = new FormData();
         // Make sure to append the file with the exact key name expected by the backend
         formData.append('file', file);
+        
+        // Include the workspace ID if available
+        if (workspace && workspace.ruleGenerationId) {
+            formData.append('workspace_id', workspace.ruleGenerationId);
+        }
 
         try {
             await api.post('/api/email-files/', formData, {
@@ -141,6 +150,14 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
     return (
         <div>
             <h2 className="text-xl font-semibold mb-4">Upload Email Files</h2>
+            {workspace && workspace.isNew && (
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                    <p className="text-blue-700">
+                        <span className="font-bold">New workspace created: </span> 
+                        {workspace.name}
+                    </p>
+                </div>
+            )}
 
             {/* Dropzone */}
             <div
@@ -196,7 +213,12 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep }) {
             {/* File list */}
             <div className="mb-6">
                 <h3 className="text-lg font-medium mb-3">Uploaded Files</h3>
-                {emailFiles.length === 0 ? (
+                {isLoading ? (
+                    <div className="flex justify-center items-center p-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                        <p className="ml-3">Loading files...</p>
+                    </div>
+                ) : emailFiles.length === 0 ? (
                     <p className="text-gray-500 py-3">No files uploaded yet</p>
                 ) : (
                     <div className="space-y-2">

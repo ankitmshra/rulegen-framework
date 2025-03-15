@@ -1,32 +1,35 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
+import { useAuth } from '../context/AuthContext';
 
 function WorkspaceSelector({ setCurrentWorkspace }) {
     const [workspaceName, setWorkspaceName] = useState('');
     const [error, setError] = useState('');
     const [recentWorkspaces, setRecentWorkspaces] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCreating, setIsCreating] = useState(false);
     const navigate = useNavigate();
+    const { user } = useAuth();
 
     useEffect(() => {
         // Load recent workspaces
-        const fetchWorkspaces = async () => {
-            try {
-                setIsLoading(true);
-                const response = await api.get('/api/rule-generations/workspaces/');
-                setRecentWorkspaces(response.data.slice(0, 5)); // Get top 5 recent workspaces
-            } catch (error) {
-                console.error('Error fetching workspaces:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         fetchWorkspaces();
     }, []);
 
-    const handleSubmit = (e) => {
+    const fetchWorkspaces = async () => {
+        try {
+            setIsLoading(true);
+            const response = await api.get('/api/rule-generations/workspaces/');
+            setRecentWorkspaces(response.data.slice(0, 5)); // Get top 5 recent workspaces
+        } catch (error) {
+            console.error('Error fetching workspaces:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!workspaceName.trim()) {
@@ -34,22 +37,62 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
             return;
         }
 
-        setCurrentWorkspace({
-            name: workspaceName,
-            created: new Date().toISOString()
-        });
-
-        navigate('/rulegen');
+        try {
+            setIsCreating(true);
+            
+            // Create a new rule generation with this workspace name
+            // This registers the workspace in the database immediately
+            const response = await api.post('/api/rule-generations/', {
+                workspace_name: workspaceName,
+                email_file_ids: [],  // Empty array initially
+                selected_headers: [],  // Empty array initially
+                prompt_modules: []    // Empty array initially
+            });
+            
+            // Then update the current workspace
+            const newWorkspace = {
+                name: workspaceName,
+                ruleGenerationId: response.data.id,
+                created: response.data.created_at || new Date().toISOString(),
+                isNew: true  // Flag to indicate this is a brand new workspace
+            };
+            
+            setCurrentWorkspace(newWorkspace);
+            
+            // Navigate to rulegen with the workspace
+            navigate('/rulegen', { 
+                replace: true, 
+                state: { 
+                    newWorkspace: newWorkspace,
+                    isNewWorkspace: true
+                } 
+            });
+        } catch (error) {
+            console.error('Error creating workspace:', error);
+            setError('Failed to create workspace. Please try again.');
+        } finally {
+            setIsCreating(false);
+        }
     };
 
     const selectRecentWorkspace = (workspace) => {
-        setCurrentWorkspace({
+        const selectedWorkspace = {
             name: workspace.workspace_name,
             ruleGenerationId: workspace.latest_id,
-            created: workspace.latest_date
-        });
+            created: workspace.latest_date,
+            isNew: false
+        };
+        
+        setCurrentWorkspace(selectedWorkspace);
 
-        navigate('/rulegen');
+        // Navigate to rulegen with the selected workspace
+        navigate('/rulegen', { 
+            replace: true, 
+            state: { 
+                newWorkspace: selectedWorkspace,
+                isNewWorkspace: false
+            } 
+        });
     };
 
     return (
@@ -83,8 +126,17 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                     <button
                         type="submit"
                         className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition duration-200"
+                        disabled={isCreating}
                     >
-                        Create Workspace
+                        {isCreating ? (
+                            <span className="flex items-center justify-center">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Creating...
+                            </span>
+                        ) : 'Create Workspace'}
                     </button>
                 </form>
             </div>

@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth.models import User
 import uuid
 import os
 
@@ -13,6 +14,7 @@ def get_file_path(instance, filename):
 
 class EmailFile(models.Model):
     """Model to store uploaded email files."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_files')
     file = models.FileField(upload_to=get_file_path)
     original_filename = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(default=timezone.now)
@@ -24,6 +26,7 @@ class EmailFile(models.Model):
 
 class RuleGeneration(models.Model):
     """Model to store generated SpamAssassin rules."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='rule_generations')
     workspace_name = models.CharField(max_length=255, default="Unnamed Workspace")
     email_files = models.ManyToManyField(EmailFile, related_name='rule_generations')
     selected_headers = models.JSONField()
@@ -41,6 +44,7 @@ class RuleGeneration(models.Model):
 
 class PromptTemplate(models.Model):
     """Model to store prompt templates for rule generation."""
+    # Keeping prompt templates global (shared across users)
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     template = models.TextField()

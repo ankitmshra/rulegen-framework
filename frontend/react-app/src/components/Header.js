@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import WorkspaceSwitcher from './WorkspaceSwitcher';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
-function Header({ currentWorkspace }) {
+function Header() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const navigate = useNavigate();
-    const location = useLocation();
+    const { logout } = useAuth();
 
-    const isActive = (path) => {
-        return location.pathname === path;
+    const handleWorkspaceManager = () => {
+        navigate('/workspace/new');
     };
 
-    const handleCreateNew = () => {
-        if (currentWorkspace && !window.confirm('Creating a new workspace will close your current workspace. Continue?')) {
-            return;
+    const handleLogout = async () => {
+        if (window.confirm('Are you sure you want to log out?')) {
+            await logout();
+            navigate('/login');
         }
-        navigate('/');
     };
 
     return (
@@ -24,7 +24,7 @@ function Header({ currentWorkspace }) {
                 <div className="flex justify-between items-center">
                     <div className="flex items-center space-x-2">
                         <i className="fas fa-shield-alt text-2xl"></i>
-                        <Link to={currentWorkspace ? '/rulegen' : '/'} className="text-2xl font-bold">
+                        <Link to="/" className="text-2xl font-bold">
                             SA Codex
                         </Link>
                     </div>
@@ -39,65 +39,43 @@ function Header({ currentWorkspace }) {
                         </button>
                     </div>
 
-                    {/* Desktop navigation */}
-                    <div className="hidden md:flex items-center space-x-6">
-                        {currentWorkspace && (
-                            <div className="text-sm bg-indigo-700 px-3 py-1 rounded">
-                                Workspace: {currentWorkspace.name}
-                            </div>
-                        )}
-                        <nav className="flex space-x-6">
-                            <Link
-                                to="/rulegen"
-                                className={`${isActive('/rulegen') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
-                            >
-                                Rule Generation
-                            </Link>
-                            <Link
-                                to="/prompts"
-                                className={`${isActive('/prompts') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
-                            >
-                                Prompt Manager
-                            </Link>
-                        </nav>
-                        <WorkspaceSwitcher
-                            currentWorkspace={currentWorkspace}
-                            onWorkspaceChange={(workspace, isNewWorkspace = false) =>
-                                navigate('/', { state: { newWorkspace: workspace, isNewWorkspace } })}
-                        />
+                    {/* Right side action buttons */}
+                    <div className="hidden md:flex items-center space-x-4">
+                        <button
+                            onClick={handleWorkspaceManager}
+                            className="bg-white text-indigo-600 px-4 py-2 rounded-md hover:bg-indigo-50 transition-colors font-medium"
+                        >
+                            <i className="fas fa-folder-open mr-2"></i> Workspaces
+                        </button>
+                        
+                        <button
+                            onClick={handleLogout}
+                            className="text-indigo-200 hover:text-white"
+                        >
+                            <i className="fas fa-sign-out-alt mr-1"></i> Logout
+                        </button>
                     </div>
                 </div>
 
                 {/* Mobile navigation */}
                 {mobileMenuOpen && (
                     <div className="mt-4 pb-2 md:hidden">
-                        {currentWorkspace && (
-                            <div className="text-sm bg-indigo-700 px-3 py-1 rounded mb-4">
-                                Workspace: {currentWorkspace.name}
-                            </div>
-                        )}
                         <nav className="flex flex-col space-y-3">
-                            <Link
-                                to="/rulegen"
-                                className={`${isActive('/rulegen') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
-                                onClick={() => setMobileMenuOpen(false)}
-                            >
-                                Rule Generation
-                            </Link>
-                            <Link
-                                to="/prompts"
-                                className={`${isActive('/prompts') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
-                                onClick={() => setMobileMenuOpen(false)}
-                            >
-                                Prompt Manager
-                            </Link>
-                            <WorkspaceSwitcher
-                                currentWorkspace={currentWorkspace}
-                                onWorkspaceChange={(workspace, isNewWorkspace = false) => {
+                            <button
+                                onClick={() => {
                                     setMobileMenuOpen(false);
-                                    navigate('/', { state: { newWorkspace: workspace, isNewWorkspace } });
+                                    handleWorkspaceManager();
                                 }}
-                            />
+                                className="text-indigo-200 hover:text-white text-left"
+                            >
+                                <i className="fas fa-folder-open mr-1"></i> Workspaces
+                            </button>
+                            <button
+                                onClick={handleLogout}
+                                className="text-indigo-200 hover:text-white text-left"
+                            >
+                                <i className="fas fa-sign-out-alt mr-1"></i> Logout
+                            </button>
                         </nav>
                     </div>
                 )}

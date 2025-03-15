@@ -6,6 +6,7 @@ const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    withCredentials: true, // Important for sessions to work
 });
 
 // Add request interceptor to include CSRF token

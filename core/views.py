@@ -10,25 +10,59 @@ from .prompt_manager import PromptManager
 import threading
 import os
 from django.conf import settings
+from rest_framework.permissions import IsAuthenticated
 
 
 class EmailFileViewSet(viewsets.ModelViewSet):
     """ViewSet for managing email files."""
-    queryset = EmailFile.objects.all().order_by('-uploaded_at')
+    permission_classes = [IsAuthenticated]
     serializer_class = EmailFileSerializer
 
+    def get_queryset(self):
+        """
+        Return only the email files owned by the authenticated user,
+        filtered by workspace if specified.
+        """
+        queryset = EmailFile.objects.filter(user=self.request.user)
+
+        # Filter by workspace if provided
+        workspace_id = self.request.query_params.get('workspace', None)
+        if workspace_id:
+            try:
+                workspace_id = int(workspace_id)
+                # Get email files associated with this rule generation
+                rule_gen = RuleGeneration.objects.get(id=workspace_id, user=self.request.user)
+                return rule_gen.email_files.all()
+            except (ValueError, RuleGeneration.DoesNotExist):
+                # If invalid workspace ID or workspace doesn't exist, return empty queryset
+                return EmailFile.objects.none()
+
+        return queryset.order_by('-uploaded_at')
+
     def perform_create(self, serializer):
-        """Set the original filename when creating an email file."""
+        """Set the original filename and user when creating an email file."""
         # Create the upload directory if it doesn't exist
         upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
         os.makedirs(upload_dir, exist_ok=True)
 
         file_obj = self.request.FILES.get('file')
+        workspace_id = self.request.data.get('workspace_id')
+
         if file_obj:
             if not file_obj.name.lower().endswith('.eml'):
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError({"file": "Only .eml files are supported."})
-            serializer.save(original_filename=file_obj.name)
+
+            email_file = serializer.save(original_filename=file_obj.name, user=self.request.user)
+
+            # Associate with workspace if provided
+            if workspace_id:
+                try:
+                    rule_gen = RuleGeneration.objects.get(id=workspace_id, user=self.request.user)
+                    rule_gen.email_files.add(email_file)
+                except (ValueError, RuleGeneration.DoesNotExist):
+                    # Ignore if workspace doesn't exist
+                    pass
         else:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({"file": "No file was submitted."})
@@ -36,9 +70,9 @@ class EmailFileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def available_headers(self, request):
         """Get all available headers from the processed emails."""
-        email_files = EmailFile.objects.all()
+        email_files = self.get_queryset()
         if not email_files:
-            return Response({"error": "No email files found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({}, status=status.HTTP_200_OK)
 
         try:
             headers = SpamGenieService.get_available_headers(email_files)
@@ -49,6 +83,7 @@ class EmailFileViewSet(viewsets.ModelViewSet):
 
 class PromptTemplateViewSet(viewsets.ModelViewSet):
     """ViewSet for managing prompt templates."""
+    permission_classes = [IsAuthenticated]
     queryset = PromptTemplate.objects.all().order_by('name')
     serializer_class = PromptTemplateSerializer
 
@@ -83,14 +118,18 @@ class PromptTemplateViewSet(viewsets.ModelViewSet):
 
 class RuleGenerationViewSet(viewsets.ModelViewSet):
     """ViewSet for managing rule generations."""
-    queryset = RuleGeneration.objects.all().order_by('-created_at')
+    permission_classes = [IsAuthenticated]
     serializer_class = RuleGenerationSerializer
+
+    def get_queryset(self):
+        """Return only the rule generations owned by the authenticated user."""
+        return RuleGeneration.objects.filter(user=self.request.user).order_by('-created_at')
 
     def create(self, request, *args, **kwargs):
         """Create a new rule generation request."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        rule_generation = serializer.save()
+        rule_generation = serializer.save(user=request.user)
 
         # Start a background thread to process the rule generation
         threading.Thread(
@@ -104,7 +143,7 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def status(self, request, pk=None):
         """Get the status of a rule generation request."""
-        rule_generation = get_object_or_404(RuleGeneration, pk=pk)
+        rule_generation = get_object_or_404(self.get_queryset(), pk=pk)
         return Response({
             'id': rule_generation.id,
             'workspace_name': rule_generation.workspace_name,
@@ -114,8 +153,8 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def workspaces(self, request):
-        """Get all unique workspaces with their latest rule generation."""
-        workspaces = RuleGeneration.objects.values('workspace_name').annotate(
+        """Get all unique workspaces with their latest rule generation for the current user."""
+        workspaces = self.get_queryset().values('workspace_name').annotate(
             count=Count('id'),
             latest_id=Max('id'),
             latest_date=Max('created_at')
@@ -142,6 +181,7 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
         try:
             # Create a temporary RuleGeneration object
             temp_rule_generation = RuleGeneration(
+                user=request.user,  # Add user to temporary object
                 selected_headers=request.data.get('selected_headers', []),
                 prompt_modules=request.data.get('prompt_modules', []),
                 workspace_name=request.data.get('workspace_name', 'Temporary Workspace'),
@@ -150,7 +190,11 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
 
             # Add email files to the temporary object
             email_file_ids = request.data.get('email_file_ids', [])
-            email_files = EmailFile.objects.filter(id__in=email_file_ids)
+            # Filter to ensure we only include files owned by this user
+            email_files = EmailFile.objects.filter(
+                id__in=email_file_ids,
+                user=request.user
+            )
 
             # We need to save to use M2M relationship
             temp_rule_generation.save()

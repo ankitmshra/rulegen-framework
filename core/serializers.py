@@ -9,7 +9,7 @@ class EmailFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmailFile
         fields = ['id', 'file', 'file_url', 'original_filename', 'uploaded_at', 'processed']
-        read_only_fields = ['uploaded_at', 'processed', 'original_filename']
+        read_only_fields = ['uploaded_at', 'processed', 'original_filename', 'user']
         extra_kwargs = {
             'file': {'required': True, 'allow_empty_file': False}
         }
@@ -49,7 +49,7 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
         fields = ['id', 'workspace_name', 'email_files', 'email_file_ids', 'selected_headers',
                   'prompt', 'rule', 'created_at', 'is_complete',
                   'custom_prompt', 'prompt_modules', 'base_prompt_id', 'prompt_metadata']
-        read_only_fields = ['rule', 'created_at', 'is_complete', 'prompt_metadata']
+        read_only_fields = ['rule', 'created_at', 'is_complete', 'prompt_metadata', 'user']
         extra_kwargs = {
             'prompt': {'required': False},  # Make prompt field optional
             # Make workspace_name optional for backwards compatibility
@@ -74,8 +74,9 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
 
         rule_generation = RuleGeneration.objects.create(**validated_data)
 
-        # Add the email files to the rule generation
-        email_files = EmailFile.objects.filter(id__in=email_file_ids)
+        # Add the email files to the rule generation, ensuring they belong to the user
+        user = validated_data.get('user')
+        email_files = EmailFile.objects.filter(id__in=email_file_ids, user=user)
         rule_generation.email_files.set(email_files)
 
         return rule_generation

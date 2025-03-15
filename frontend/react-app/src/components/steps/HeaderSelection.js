@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react';
 import api from '../../api';
 
-function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goToNextStep, goToPreviousStep }) {
+function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goToNextStep, goToPreviousStep, workspace }) {
     const [availableHeaders, setAvailableHeaders] = useState({});
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [selectAll, setSelectAll] = useState(false);
 
     useEffect(() => {
-        fetchAvailableHeaders();
+        if (emailFiles.length > 0) {
+            fetchAvailableHeaders();
+        } else {
+            setAvailableHeaders({});
+            setIsLoading(false);
+        }
     }, [emailFiles]);
 
     useEffect(() => {
@@ -22,12 +28,22 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
 
     const fetchAvailableHeaders = async () => {
         setIsLoading(true);
+        setError(null);
+        
         try {
-            const response = await api.get('/api/email-files/available_headers/');
+            // Build query with email file IDs if we have any
+            const emailFileIds = emailFiles.map(file => file.id).join(',');
+            const query = emailFileIds ? `?email_files=${emailFileIds}` : '';
+            
+            // Add workspace ID if available
+            const workspaceParam = workspace?.ruleGenerationId ? 
+                (query ? `&workspace=${workspace.ruleGenerationId}` : `?workspace=${workspace.ruleGenerationId}`) : '';
+            
+            const response = await api.get(`/api/email-files/available_headers/${query}${workspaceParam}`);
             setAvailableHeaders(response.data);
         } catch (error) {
             console.error('Error fetching available headers:', error);
-            alert('Failed to load email headers. Please try again.');
+            setError('Failed to load email headers. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -50,6 +66,10 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
         }
     };
 
+    const handleRetry = () => {
+        fetchAvailableHeaders();
+    };
+
     return (
         <div>
             <h2 className="text-xl font-semibold mb-4">Select Email Headers to Analyze</h2>
@@ -58,6 +78,23 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
                 <div className="flex justify-center items-center p-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
                     <p className="ml-3">Loading headers...</p>
+                </div>
+            ) : error ? (
+                <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <i className="fas fa-exclamation-circle text-red-500"></i>
+                        </div>
+                        <div className="ml-3">
+                            <p className="text-red-700">{error}</p>
+                            <button 
+                                onClick={handleRetry}
+                                className="mt-2 bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded transition-colors"
+                            >
+                                <i className="fas fa-sync-alt mr-1"></i> Retry
+                            </button>
+                        </div>
+                    </div>
                 </div>
             ) : (
                 <>
@@ -113,7 +150,7 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
                 <button
                     onClick={goToNextStep}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                    disabled={selectedHeaders.length === 0}
+                    disabled={selectedHeaders.length === 0 || isLoading || error}
                 >
                     Next: Generate Rules
                 </button>

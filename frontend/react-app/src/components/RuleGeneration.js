@@ -54,7 +54,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
 
             // Update state with loaded data
             setRuleGeneration(response.data);
-            setEmailFiles(response.data.email_files);
+            setEmailFiles(response.data.email_files || []);
             setSelectedHeaders(response.data.selected_headers || []);
             setSelectedModules(response.data.prompt_modules || []);
 
@@ -107,6 +107,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
                         emailFiles={emailFiles}
                         setEmailFiles={setEmailFiles}
                         goToNextStep={goToNextStep}
+                        workspace={workspace}
                     />
                 );
             case 1:
@@ -117,6 +118,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
                         setSelectedHeaders={setSelectedHeaders}
                         goToNextStep={goToNextStep}
                         goToPreviousStep={goToPreviousStep}
+                        workspace={workspace}
                     />
                 );
             case 2:

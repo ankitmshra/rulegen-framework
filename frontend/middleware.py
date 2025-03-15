@@ -1,6 +1,7 @@
 # frontend/middleware.py
 import os
 from django.conf import settings
+from django.shortcuts import redirect
 
 
 class ReactAssetDebugMiddleware:
@@ -37,3 +38,19 @@ to build and deploy the React app.
             response.content = content.encode('utf-8')
 
         return response
+
+
+class AdminLoginRedirectMiddleware:
+    """
+    Middleware to redirect admin login requests to custom login page.
+    """
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # If request is for admin login, redirect to custom login
+        if request.path == '/admin/login/' and not request.user.is_authenticated:
+            return redirect('/login/')
+
+        # Continue with normal request
+        return self.get_response(request)
