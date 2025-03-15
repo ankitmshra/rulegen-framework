@@ -1,6 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import EmailFile, RuleGeneration, PromptTemplate, UserProfile
+from .models import (
+    EmailFile,
+    RuleGeneration,
+    PromptTemplate,
+    UserProfile,
+    WorkspaceShare,
+)
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -240,3 +246,40 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
         rule_generation.email_files.set(email_files)
 
         return rule_generation
+
+
+class WorkspaceShareSerializer(serializers.ModelSerializer):
+    """Serializer for the WorkspaceShare model."""
+
+    owner_username = serializers.CharField(source="owner.username", read_only=True)
+    shared_with_username = serializers.CharField(
+        source="shared_with.username", read_only=True
+    )
+    shared_with_email = serializers.CharField(
+        source="shared_with.email", read_only=True
+    )
+
+    class Meta:
+        model = WorkspaceShare
+        fields = [
+            "id",
+            "workspace_name",
+            "owner",
+            "owner_username",
+            "shared_with",
+            "shared_with_username",
+            "shared_with_email",
+            "permission",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "owner_username",
+            "shared_with_username",
+            "shared_with_email",
+        ]
+        extra_kwargs = {
+            "owner": {"write_only": True},
+            "shared_with": {"write_only": True},
+        }

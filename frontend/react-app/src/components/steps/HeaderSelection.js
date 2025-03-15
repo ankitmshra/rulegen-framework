@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../api';
 
-function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goToNextStep, goToPreviousStep, workspace }) {
+function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goToNextStep, goToPreviousStep, workspace, isReadOnly = false }) {
     const [availableHeaders, setAvailableHeaders] = useState({});
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -50,6 +50,9 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
     };
 
     const handleHeaderChange = (header, isChecked) => {
+        // Skip if read-only
+        if (isReadOnly) return;
+        
         if (isChecked) {
             setSelectedHeaders(prev => [...prev, header]);
         } else {
@@ -58,6 +61,9 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
     };
 
     const handleSelectAll = (isChecked) => {
+        // Skip if read-only
+        if (isReadOnly) return;
+        
         setSelectAll(isChecked);
         if (isChecked) {
             setSelectedHeaders(Object.keys(availableHeaders));
@@ -73,6 +79,22 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
     return (
         <div>
             <h2 className="text-xl font-semibold mb-4">Select Email Headers to Analyze</h2>
+            
+            {/* Add shared workspace notification */}
+            {workspace && workspace.isShared && (
+                <div className={`p-4 mb-4 rounded-lg border-l-4 ${
+                    workspace.permission === 'read' 
+                        ? 'bg-yellow-50 border-yellow-400 text-yellow-700' 
+                        : 'bg-blue-50 border-blue-400 text-blue-700'
+                }`}>
+                    <p>
+                        <span className="font-medium">Shared workspace: </span>
+                        {workspace.permission === 'read' 
+                            ? 'You have read-only access. Header selection cannot be modified.' 
+                            : 'You have read and write access to this workspace.'}
+                    </p>
+                </div>
+            )}
 
             {isLoading ? (
                 <div className="flex justify-center items-center p-12">
@@ -102,9 +124,12 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
                         <input
                             type="checkbox"
                             id="select-all-headers"
-                            className="rounded text-indigo-600 focus:ring-indigo-500 mr-2"
+                            className={`rounded text-indigo-600 focus:ring-indigo-500 mr-2 ${
+                                isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
                             checked={selectAll}
                             onChange={(e) => handleSelectAll(e.target.checked)}
+                            disabled={isReadOnly}
                         />
                         <label htmlFor="select-all-headers" className="font-medium">
                             Select All Headers
@@ -121,9 +146,12 @@ function HeaderSelection({ emailFiles, selectedHeaders, setSelectedHeaders, goTo
                                         <input
                                             type="checkbox"
                                             id={`header-${header}`}
-                                            className="rounded text-indigo-600 focus:ring-indigo-500 mt-1"
+                                            className={`rounded text-indigo-600 focus:ring-indigo-500 mt-1 ${
+                                                isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                                            }`}
                                             checked={selectedHeaders.includes(header)}
                                             onChange={(e) => handleHeaderChange(header, e.target.checked)}
+                                            disabled={isReadOnly}
                                         />
                                         <div>
                                             <label htmlFor={`header-${header}`} className="font-medium cursor-pointer">

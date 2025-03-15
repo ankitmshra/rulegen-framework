@@ -15,15 +15,16 @@ marked.setOptions({
 });
 
 function RuleGenerate({
-                          workspace,
-                          emailFiles,
-                          selectedHeaders,
-                          selectedModules,
-                          setSelectedModules,
-                          ruleGeneration,
-                          setRuleGeneration,
-                          goToPreviousStep
-                      }) {
+    workspace,
+    emailFiles,
+    selectedHeaders,
+    selectedModules,
+    setSelectedModules,
+    ruleGeneration,
+    setRuleGeneration,
+    goToPreviousStep,
+    isReadOnly = false
+}) {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
     const [prompt, setPrompt] = useState('');
@@ -279,6 +280,22 @@ function RuleGenerate({
     return (
         <div>
             <h2 className="text-xl font-semibold mb-4">Generate SpamAssassin Rules</h2>
+            
+            {/* Add shared workspace notification */}
+            {workspace && workspace.isShared && (
+                <div className={`p-4 mb-4 rounded-lg border-l-4 ${
+                    workspace.permission === 'read' 
+                        ? 'bg-yellow-50 border-yellow-400 text-yellow-700' 
+                        : 'bg-blue-50 border-blue-400 text-blue-700'
+                }`}>
+                    <p>
+                        <span className="font-medium">Shared workspace: </span>
+                        {workspace.permission === 'read' 
+                            ? 'You have read-only access. Rules cannot be modified.' 
+                            : 'You have read and write access to this workspace.'}
+                    </p>
+                </div>
+            )}
 
             {/* Summary */}
             <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -323,7 +340,10 @@ function RuleGenerate({
                             <select
                                 value={selectedBasePrompt || ''}
                                 onChange={(e) => setSelectedBasePrompt(e.target.value)}
-                                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                className={`w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                                    isReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                                disabled={isReadOnly}
                             >
                                 <option value="">-- Select a base prompt --</option>
                                 {basePrompts.map(prompt => (
@@ -347,16 +367,18 @@ function RuleGenerate({
             {/* Module Selection */}
             <ModuleSelector
                 selectedModules={selectedModules}
-                setSelectedModules={setSelectedModules}
+                setSelectedModules={isReadOnly ? () => {} : setSelectedModules}
+                disabled={isReadOnly}
             />
 
             {/* Prompt Editor */}
             <PromptEditor
                 prompt={prompt}
                 customPrompt={customPrompt}
-                setCustomPrompt={setCustomPrompt}
+                setCustomPrompt={isReadOnly ? () => {} : setCustomPrompt}
                 isLoading={promptLoading}
-                onResetPrompt={() => setCustomPrompt(prompt)}
+                onResetPrompt={() => !isReadOnly && setCustomPrompt(prompt)}
+                disabled={isReadOnly}
             />
 
             {/* Generation Status */}
@@ -408,7 +430,7 @@ function RuleGenerate({
                 <button
                     onClick={generateRules}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                    disabled={isGenerating || promptLoading}
+                    disabled={isGenerating || promptLoading || isReadOnly}
                 >
                     {responseHistory.length > 0 ? 'Generate New Response' : 'Generate Rules'}
                 </button>

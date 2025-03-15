@@ -1,22 +1,30 @@
+"""
+Views for core API endpoints.
+"""
+
 from django.contrib.auth.models import User
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Q, F, Value, BooleanField
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import EmailFile, RuleGeneration, PromptTemplate, UserProfile
+from .models import (
+    EmailFile,
+    RuleGeneration,
+    PromptTemplate,
+    WorkspaceShare,
+)
 from .serializers import (
     EmailFileSerializer,
     RuleGenerationSerializer,
     PromptTemplateSerializer,
     UserSerializer,
-    UserProfileSerializer,
+    WorkspaceShareSerializer,
 )
 from .services import SpamGenieService
 from .prompt_manager import PromptManager
 from .permissions import (
     AdminPermission,
-    PowerUserPermission,
     NormalUserPermission,
     PromptTemplatePermission,
     WorkspacePermission,
@@ -48,6 +56,24 @@ class UserViewSet(viewsets.ModelViewSet):
         """Get current user's profile."""
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["get"])
+    def search(self, request):
+        """Search users by username or email."""
+        query = request.query_params.get("q", "")
+        if len(query) < 2:
+            return Response([])
+
+        # Don't include the current user in results
+        users = (
+            User.objects.filter(
+                Q(username__icontains=query) | Q(email__icontains=query)
+            )
+            .exclude(id=request.user.id)
+            .values("id", "username", "email")[:10]
+        )
+
+        return Response(users)
 
 
 class EmailFileViewSet(viewsets.ModelViewSet):
@@ -234,20 +260,33 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
     serializer_class = RuleGenerationSerializer
 
     def get_queryset(self):
-        """Return the rule generations based on user role."""
+        """Return rule generations based on user permissions."""
         user = self.request.user
 
-        # Admin can see all rule generations if 'all' parameter is provided
-        if self.request.query_params.get("all", "").lower() == "true":
-            try:
-                user_profile = user.profile
-                if user_profile.is_admin:
-                    return RuleGeneration.objects.all().order_by("-created_at")
-            except:
-                pass
+        # Get workspaces this user has access to through sharing
+        shared_workspaces = WorkspaceShare.objects.filter(shared_with=user).values_list(
+            "workspace_name", "owner_id"
+        )
 
-        # Other users see only their own rule generations
-        return RuleGeneration.objects.filter(user=user).order_by("-created_at")
+        # Create a list of Q objects for each shared workspace
+        shared_filters = [
+            Q(workspace_name=name, user_id=owner_id)
+            for name, owner_id in shared_workspaces
+        ]
+
+        # Combine all filters with OR
+        if shared_filters:
+            shared_q = shared_filters[0]
+            for q in shared_filters[1:]:
+                shared_q |= q
+
+            # Return user's own rule generations OR shared ones
+            return RuleGeneration.objects.filter(Q(user=user) | shared_q).order_by(
+                "-created_at"
+            )
+        else:
+            # Just return user's own rule generations
+            return RuleGeneration.objects.filter(user=user).order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
         """Create a new rule generation request."""
@@ -265,6 +304,39 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        """Check permissions for shared workspaces when retrieving a specific rule generation."""
+        instance = self.get_object()
+
+        # If it's the user's own rule generation, proceed normally
+        if instance.user == request.user:
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
+
+        # Check if user has access through sharing
+        try:
+            # Get sharing record
+            share = WorkspaceShare.objects.get(
+                workspace_name=instance.workspace_name,
+                owner=instance.user,
+                shared_with=request.user,
+            )
+
+            # Add permission info to the serialized data
+            serializer = self.get_serializer(instance)
+            data = serializer.data
+            data["shared_info"] = {
+                "permission": share.permission,
+                "owner_username": instance.user.username,
+            }
+            return Response(data)
+
+        except WorkspaceShare.DoesNotExist:
+            return Response(
+                {"error": "You do not have permission to access this rule generation"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
     @action(detail=True, methods=["get"])
     def status(self, request, pk=None):
         """Get the status of a rule generation request."""
@@ -281,38 +353,209 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def workspaces(self, request):
-        """Get all unique workspaces with their latest rule generation for the current user."""
-        # For admin users, optionally show all workspaces
-        if request.query_params.get("all", "").lower() == "true":
-            try:
-                user_profile = request.user.profile
-                if user_profile.is_admin:
-                    workspaces = (
-                        RuleGeneration.objects.values(
-                            "workspace_name", "user__username"
-                        )
-                        .annotate(
-                            count=Count("id"),
-                            latest_id=Max("id"),
-                            latest_date=Max("created_at"),
-                        )
-                        .order_by("-latest_date")
-                    )
-                    return Response(workspaces, status=status.HTTP_200_OK)
-            except:
-                pass
+        """Get all workspaces the user has access to."""
+        user = request.user
 
-        # Regular case - user's own workspaces
-        workspaces = (
-            self.get_queryset()
+        # Get user's own workspaces
+        own_workspaces = (
+            RuleGeneration.objects.filter(user=user)
             .values("workspace_name")
             .annotate(
-                count=Count("id"), latest_id=Max("id"), latest_date=Max("created_at")
+                count=Count("id"),
+                latest_id=Max("id"),
+                latest_date=Max("created_at"),
+                user_id=F("user__id"),
+                is_owner=Value(True, output_field=BooleanField()),
             )
             .order_by("-latest_date")
         )
 
+        # Add share information to each owned workspace
+        own_workspaces_with_shares = []
+        for workspace in own_workspaces:
+            workspace_name = workspace["workspace_name"]
+            shares = WorkspaceShare.objects.filter(
+                workspace_name=workspace_name, owner=request.user
+            ).select_related("shared_with")
+
+            shares_data = []
+            for share in shares:
+                shares_data.append(
+                    {
+                        "user_id": share.shared_with.id,
+                        "username": share.shared_with.username,
+                        "email": share.shared_with.email,
+                        "permission": share.permission,
+                    }
+                )
+
+            workspace_with_shares = dict(workspace)
+            workspace_with_shares["shares"] = shares_data
+            own_workspaces_with_shares.append(workspace_with_shares)
+
+        include_shared = request.query_params.get("all", "").lower() == "true"
+
+        if include_shared:
+            # Get workspaces shared with the user
+            shared_workspaces_data = []
+            shared_relations = WorkspaceShare.objects.filter(
+                shared_with=user
+            ).select_related("owner")
+
+            for share in shared_relations:
+                # For each share, get the latest rule generation
+                latest_rule_gen = (
+                    RuleGeneration.objects.filter(
+                        workspace_name=share.workspace_name, user=share.owner
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+
+                if latest_rule_gen:
+                    shared_workspaces_data.append(
+                        {
+                            "workspace_name": share.workspace_name,
+                            "count": RuleGeneration.objects.filter(
+                                workspace_name=share.workspace_name, user=share.owner
+                            ).count(),
+                            "latest_id": latest_rule_gen.id,
+                            "latest_date": latest_rule_gen.created_at,
+                            "user_id": share.owner.id,
+                            "user__username": share.owner.username,
+                            "is_owner": False,
+                            "permission": share.permission,
+                        }
+                    )
+
+            # Combine own and shared workspaces
+            all_workspaces = own_workspaces_with_shares + shared_workspaces_data
+            # Sort by latest date
+            all_workspaces = sorted(
+                all_workspaces, key=lambda x: x["latest_date"], reverse=True
+            )
+
+            return Response(all_workspaces, status=status.HTTP_200_OK)
+
+        # If not including shared, just return own workspaces
+        return Response(own_workspaces_with_shares, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"])
+    def shared_workspaces(self, request):
+        """Get all workspaces shared with the current user."""
+        shared = WorkspaceShare.objects.filter(shared_with=request.user)
+
+        # Group by workspace_name and owner
+        workspaces = []
+        for share in shared:
+            # Get the most recent rule generation for this workspace
+            latest_rule_gen = (
+                RuleGeneration.objects.filter(
+                    workspace_name=share.workspace_name, user=share.owner
+                )
+                .order_by("-created_at")
+                .first()
+            )
+
+            if latest_rule_gen:
+                workspaces.append(
+                    {
+                        "workspace_name": share.workspace_name,
+                        "owner_id": share.owner.id,
+                        "owner_username": share.owner.username,
+                        "permission": share.permission,
+                        "count": RuleGeneration.objects.filter(
+                            workspace_name=share.workspace_name, user=share.owner
+                        ).count(),
+                        "latest_id": latest_rule_gen.id,
+                        "latest_date": latest_rule_gen.created_at,
+                    }
+                )
+
         return Response(workspaces, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"])
+    def share_workspace(self, request):
+        """Share a workspace with another user."""
+        workspace_name = request.data.get("workspace_name")
+        username_or_email = request.data.get("username_or_email")
+        permission = request.data.get("permission", WorkspaceShare.READ)
+
+        if not workspace_name or not username_or_email:
+            return Response(
+                {"error": "Both workspace_name and username_or_email are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verify the workspace exists for this user
+        if not RuleGeneration.objects.filter(
+            workspace_name=workspace_name, user=request.user
+        ).exists():
+            return Response(
+                {
+                    "error": "Workspace not found or you do not have permission to share it"
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Find the user to share with
+        try:
+            if "@" in username_or_email:
+                # Search by email
+                shared_with = User.objects.get(email=username_or_email)
+            else:
+                # Search by username
+                shared_with = User.objects.get(username=username_or_email)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Don't allow sharing with yourself
+        if shared_with == request.user:
+            return Response(
+                {"error": "You cannot share a workspace with yourself"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create or update the share
+        share, created = WorkspaceShare.objects.update_or_create(
+            workspace_name=workspace_name,
+            owner=request.user,
+            shared_with=shared_with,
+            defaults={"permission": permission},
+        )
+
+        serializer = WorkspaceShareSerializer(share)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["delete"])
+    def unshare_workspace(self, request):
+        """Remove sharing for a workspace."""
+        workspace_name = request.data.get("workspace_name")
+        user_id = request.data.get("user_id")
+
+        if not workspace_name or not user_id:
+            return Response(
+                {"error": "Both workspace_name and user_id are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            share = WorkspaceShare.objects.get(
+                workspace_name=workspace_name,
+                owner=request.user,
+                shared_with_id=user_id,
+            )
+            share.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except WorkspaceShare.DoesNotExist:
+            return Response(
+                {"error": "Share not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
     @action(detail=False, methods=["get"])
     def base_prompts(self, request):

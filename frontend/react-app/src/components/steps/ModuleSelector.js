@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../api';
 
-function ModuleSelector({ selectedModules, setSelectedModules }) {
+function ModuleSelector({ selectedModules, setSelectedModules, disabled = false }) {
     const [modules, setModules] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -23,6 +23,9 @@ function ModuleSelector({ selectedModules, setSelectedModules }) {
     };
 
     const handleModuleChange = (moduleType, isChecked) => {
+        // Skip if disabled
+        if (disabled) return;
+        
         if (isChecked) {
             setSelectedModules(prev => [...prev, moduleType]);
         } else {
@@ -45,9 +48,12 @@ function ModuleSelector({ selectedModules, setSelectedModules }) {
                         <input
                             type="text"
                             placeholder="Search modules"
-                            className="w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 text-sm"
+                            className={`w-full px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 text-sm ${
+                                disabled ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
+                            disabled={disabled}
                         />
                         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                             <i className="fas fa-search text-gray-400"></i>
@@ -75,9 +81,12 @@ function ModuleSelector({ selectedModules, setSelectedModules }) {
                                 <input
                                     type="checkbox"
                                     id={`module-${module.module_type}`}
-                                    className="rounded text-indigo-600 focus:ring-indigo-500 mt-1"
+                                    className={`rounded text-indigo-600 focus:ring-indigo-500 mt-1 ${
+                                        disabled ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
                                     checked={selectedModules.includes(module.module_type)}
                                     onChange={(e) => handleModuleChange(module.module_type, e.target.checked)}
+                                    disabled={disabled}
                                 />
                                 <div>
                                     <label htmlFor={`module-${module.module_type}`} className="font-medium cursor-pointer">

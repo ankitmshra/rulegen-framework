@@ -12,8 +12,7 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
     const [isCreating, setIsCreating] = useState(false);
     const [showAllWorkspaces, setShowAllWorkspaces] = useState(false);
     
-    // New state for sharing functionality
-    const [sharedWorkspaces, setSharedWorkspaces] = useState([]);
+    // State for sharing functionality
     const [selectedWorkspace, setSelectedWorkspace] = useState(null);
     const [showShareModal, setShowShareModal] = useState(false);
     const [isLoadingShared, setIsLoadingShared] = useState(false);
@@ -22,41 +21,26 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
     const { user, isAdmin } = useAuth();
 
     useEffect(() => {
-        // Load recent workspaces
+        // Load workspaces
         fetchWorkspaces();
-        // Load shared workspaces
-        fetchSharedWorkspaces();
     }, [showAllWorkspaces]);
 
     const fetchWorkspaces = async () => {
         try {
             setIsLoading(true);
-            // Include 'all' parameter for admins who want to see all workspaces
-            const url = isAdmin() && showAllWorkspaces 
-                ? '/api/rule-generations/workspaces/?all=true'
-                : '/api/rule-generations/workspaces/';
+            // Include 'all' parameter to also retrieve shared workspaces
+            const url = showAllWorkspaces 
+                ? '/api/rule-generations/workspaces/?all=true'  // Include shared workspaces
+                : '/api/rule-generations/workspaces/';          // Only my workspaces
                 
             const response = await api.get(url);
             
-            // If showing all workspaces, get more results
-            const limit = isAdmin() && showAllWorkspaces ? 20 : 5;
-            setRecentWorkspaces(response.data.slice(0, limit));
+            // Set all workspaces
+            setRecentWorkspaces(response.data);
         } catch (error) {
             console.error('Error fetching workspaces:', error);
         } finally {
             setIsLoading(false);
-        }
-    };
-    
-    const fetchSharedWorkspaces = async () => {
-        try {
-            setIsLoadingShared(true);
-            const response = await api.get('/api/rule-generations/shared_workspaces/');
-            setSharedWorkspaces(response.data);
-        } catch (error) {
-            console.error('Error fetching shared workspaces:', error);
-        } finally {
-            setIsLoadingShared(false);
         }
     };
 
@@ -125,7 +109,8 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
         fetchWorkspaces();
     };
     
-    const selectRecentWorkspace = (workspace) => {
+    const selectWorkspace = (workspace) => {
+        // Create the workspace object with appropriate properties
         const selectedWorkspace = {
             name: workspace.workspace_name,
             ruleGenerationId: workspace.latest_id,
@@ -133,30 +118,15 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
             isNew: false
         };
         
-        setCurrentWorkspace(selectedWorkspace);
-
-        // Navigate to rulegen with the selected workspace
-        navigate('/rulegen', { 
-            replace: true, 
-            state: { 
-                newWorkspace: selectedWorkspace,
-                isNewWorkspace: false
-            } 
-        });
-    };
-    
-    const selectSharedWorkspace = (workspace) => {
-        const selectedWorkspace = {
-            name: workspace.workspace_name,
-            ruleGenerationId: workspace.latest_id,
-            created: workspace.latest_date,
-            owner: {
-                id: workspace.owner_id,
-                username: workspace.owner_username
-            },
-            permission: workspace.permission,
-            isShared: true
-        };
+        // Add shared workspace properties if it's a shared workspace
+        if (!workspace.is_owner) {
+            selectedWorkspace.isShared = true;
+            selectedWorkspace.owner = {
+                id: workspace.user_id,
+                username: workspace.user__username
+            };
+            selectedWorkspace.permission = workspace.permission;
+        }
         
         setCurrentWorkspace(selectedWorkspace);
 
@@ -245,22 +215,20 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                 </form>
             </div>
 
-            {/* Recent workspaces */}
+            {/* Workspaces list */}
             <div className="bg-white p-8 rounded-lg shadow-md mb-6">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-semibold">
-                        {isAdmin() && showAllWorkspaces ? 'All Workspaces' : 'My Workspaces'}
+                        {showAllWorkspaces ? 'All Workspaces' : 'My Workspaces'}
                     </h3>
                     
-                    {/* Toggle for admins to show all workspaces */}
-                    {isAdmin() && (
-                        <button
-                            onClick={toggleShowAllWorkspaces}
-                            className="text-indigo-600 hover:text-indigo-800 text-sm"
-                        >
-                            {showAllWorkspaces ? 'Show My Recent' : 'Show All'}
-                        </button>
-                    )}
+                    {/* Toggle button */}
+                    <button
+                        onClick={toggleShowAllWorkspaces}
+                        className="text-indigo-600 hover:text-indigo-800 text-sm"
+                    >
+                        {showAllWorkspaces ? 'Show My Workspaces' : 'Show All Workspaces'}
+                    </button>
                 </div>
 
                 {isLoading ? (
@@ -273,23 +241,29 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                 ) : (
                     <ul className="divide-y">
                         {recentWorkspaces.map((workspace) => (
-                            <li key={workspace.latest_id} className="py-3">
+                            <li key={`${workspace.user_id || 'own'}-${workspace.workspace_name}-${workspace.latest_id}`} className="py-3">
                                 <div className="flex justify-between items-center">
                                     <button
-                                        onClick={() => selectRecentWorkspace(workspace)}
+                                        onClick={() => selectWorkspace(workspace)}
                                         className="flex items-center flex-grow text-left px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
                                     >
                                         <div className="flex-grow">
-                                            <div className="font-medium">{workspace.workspace_name}</div>
-                                            <div className="text-sm text-gray-500">
-                                                Created: {new Date(workspace.latest_date).toLocaleString()}
-                                                {/* Show username for admins viewing all workspaces */}
-                                                {isAdmin() && showAllWorkspaces && workspace.user__username && (
-                                                    <span className="ml-2">by {workspace.user__username}</span>
+                                            <div className="font-medium flex items-center">
+                                                {workspace.workspace_name}
+                                                {!workspace.is_owner && (
+                                                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
+                                                        {workspace.permission === 'write' ? 'Shared (RW)' : 'Shared (RO)'}
+                                                    </span>
                                                 )}
                                             </div>
+                                            <div className="text-sm text-gray-500">
+                                                {!workspace.is_owner && workspace.user__username && (
+                                                    <span>Shared by: {workspace.user__username} • </span>
+                                                )}
+                                                Created: {new Date(workspace.latest_date).toLocaleString()}
+                                            </div>
                                             {/* Show share count if any */}
-                                            {workspace.shares && workspace.shares.length > 0 && (
+                                            {workspace.is_owner && workspace.shares && workspace.shares.length > 0 && (
                                                 <div className="mt-1 text-xs text-indigo-600">
                                                     Shared with {workspace.shares.length} user{workspace.shares.length > 1 ? 's' : ''}
                                                 </div>
@@ -300,17 +274,20 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                                         </div>
                                     </button>
                                     
-                                    <button
-                                        onClick={() => handleShareWorkspace(workspace)}
-                                        className="ml-2 text-indigo-600 hover:text-indigo-800 p-2"
-                                        title="Share workspace"
-                                    >
-                                        <i className="fas fa-share-alt"></i>
-                                    </button>
+                                    {/* Only show share button for workspaces the user owns */}
+                                    {workspace.is_owner && (
+                                        <button
+                                            onClick={() => handleShareWorkspace(workspace)}
+                                            className="ml-2 text-indigo-600 hover:text-indigo-800 p-2"
+                                            title="Share workspace"
+                                        >
+                                            <i className="fas fa-share-alt"></i>
+                                        </button>
+                                    )}
                                 </div>
                                 
-                                {/* Show existing shares */}
-                                {workspace.shares && workspace.shares.length > 0 && (
+                                {/* Show existing shares only for workspace user owns */}
+                                {workspace.is_owner && workspace.shares && workspace.shares.length > 0 && (
                                     <div className="mt-2 pl-4 pr-2">
                                         <div className="text-xs text-gray-500 mb-1">Shared with:</div>
                                         <ul className="space-y-1">
@@ -335,49 +312,6 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                                         </ul>
                                     </div>
                                 )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </div>
-            
-            {/* Shared with me section */}
-            <div className="bg-white p-8 rounded-lg shadow-md">
-                <h3 className="text-xl font-semibold mb-4">Shared with Me</h3>
-                
-                {isLoadingShared ? (
-                    <div className="text-center py-4">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                        <p className="mt-2 text-gray-600">Loading shared workspaces...</p>
-                    </div>
-                ) : sharedWorkspaces.length === 0 ? (
-                    <p className="text-gray-500 py-2">No workspaces have been shared with you</p>
-                ) : (
-                    <ul className="divide-y">
-                        {sharedWorkspaces.map((workspace) => (
-                            <li key={`${workspace.owner_id}-${workspace.workspace_name}`} className="py-3">
-                                <button
-                                    onClick={() => selectSharedWorkspace(workspace)}
-                                    className="flex items-center w-full text-left px-3 py-2 hover:bg-gray-50 rounded-md transition-colors"
-                                >
-                                    <div className="flex-grow">
-                                        <div className="flex items-center">
-                                            <span className="font-medium">{workspace.workspace_name}</span>
-                                            <span className="ml-2 px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800">
-                                                {workspace.permission === 'write' ? 'Read & Write' : 'Read Only'}
-                                            </span>
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                            Shared by: {workspace.owner_username}
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                            Last updated: {new Date(workspace.latest_date).toLocaleString()}
-                                        </div>
-                                    </div>
-                                    <div className="text-indigo-600">
-                                        <i className="fas fa-chevron-right"></i>
-                                    </div>
-                                </button>
                             </li>
                         ))}
                     </ul>

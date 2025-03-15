@@ -62,6 +62,19 @@ function RuleGeneration({ workspace, setWorkspace }) {
             if (response.data.is_complete) {
                 setCurrentStep(2);
             }
+
+            // Handle shared workspace info if available
+            if (response.data.shared_info) {
+                // Update workspace object with shared info
+                setWorkspace(prevWorkspace => ({
+                    ...prevWorkspace,
+                    owner: {
+                        username: response.data.shared_info.owner_username
+                    },
+                    permission: response.data.shared_info.permission,
+                    isShared: true
+                }));
+            }
         } catch (error) {
             console.error('Error loading rule generation:', error);
             alert('Failed to load the workspace. Please try again.');
@@ -80,6 +93,15 @@ function RuleGeneration({ workspace, setWorkspace }) {
 
     const navigateToStep = (step) => {
         // Only allow navigating to a step if its prerequisites are met
+        // and if not in readonly mode for shared workspaces
+        const isReadOnly = workspace?.isShared && workspace?.permission === 'read';
+        
+        if (isReadOnly) {
+            // For read-only shared workspaces, always go to the final step
+            setCurrentStep(2);
+            return;
+        }
+        
         if (step === 0) {
             setCurrentStep(0);
         } else if (step === 1 && emailFiles.length > 0) {
@@ -91,11 +113,41 @@ function RuleGeneration({ workspace, setWorkspace }) {
 
     // Render current step
     const renderStep = () => {
+        // Check if this is a shared workspace with read-only permission
+        const isReadOnly = workspace?.isShared && workspace?.permission === 'read';
+        
         if (isLoading) {
             return (
                 <div className="flex justify-center items-center p-12">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
                     <p className="ml-3 text-lg text-gray-700">Loading workspace...</p>
+                </div>
+            );
+        }
+
+        // If shared and read-only, always show final step with message
+        if (isReadOnly && currentStep !== 2) {
+            return (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                    <div className="flex">
+                        <div className="flex-shrink-0">
+                            <i className="fas fa-exclamation-triangle text-yellow-400"></i>
+                        </div>
+                        <div className="ml-3">
+                            <p className="text-yellow-700">
+                                This is a shared workspace with read-only access. You can view the generated rules but cannot modify them.
+                            </p>
+                            <p className="text-yellow-700 mt-2">
+                                Shared by: <span className="font-medium">{workspace.owner?.username}</span>
+                            </p>
+                            <button
+                                onClick={() => setCurrentStep(2)}
+                                className="mt-2 text-yellow-700 underline"
+                            >
+                                View Generated Rules
+                            </button>
+                        </div>
+                    </div>
                 </div>
             );
         }
@@ -108,6 +160,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
                         setEmailFiles={setEmailFiles}
                         goToNextStep={goToNextStep}
                         workspace={workspace}
+                        isReadOnly={isReadOnly}
                     />
                 );
             case 1:
@@ -119,6 +172,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
                         goToNextStep={goToNextStep}
                         goToPreviousStep={goToPreviousStep}
                         workspace={workspace}
+                        isReadOnly={isReadOnly}
                     />
                 );
             case 2:
@@ -132,6 +186,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
                         ruleGeneration={ruleGeneration}
                         setRuleGeneration={setRuleGeneration}
                         goToPreviousStep={goToPreviousStep}
+                        isReadOnly={isReadOnly}
                     />
                 );
             default:
@@ -141,6 +196,32 @@ function RuleGeneration({ workspace, setWorkspace }) {
 
     return (
         <div className="bg-white rounded-lg shadow-md p-6">
+            {/* Display shared workspace banner */}
+            {workspace?.isShared && (
+                <div className={`mb-4 p-3 rounded-lg ${
+                    workspace.permission === 'read' 
+                        ? 'bg-yellow-50 border border-yellow-200'
+                        : 'bg-blue-50 border border-blue-200'
+                }`}>
+                    <div className="flex items-center">
+                        <i className={`fas fa-share-alt mr-2 ${
+                            workspace.permission === 'read' 
+                                ? 'text-yellow-500'
+                                : 'text-blue-500'
+                        }`}></i>
+                        <div>
+                            <div className="font-medium">
+                                Shared workspace: {workspace.name}
+                            </div>
+                            <div className="text-sm">
+                                Shared by: {workspace.owner?.username} • 
+                                Permission: {workspace.permission === 'read' ? 'Read Only' : 'Read & Write'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             <StepIndicator
                 steps={steps}
                 currentStep={currentStep}

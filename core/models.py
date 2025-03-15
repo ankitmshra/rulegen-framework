@@ -8,25 +8,26 @@ import os
 
 def get_file_path(instance, filename):
     """Generate a unique file path for uploaded email files."""
-    ext = filename.split('.')[-1]
+    ext = filename.split(".")[-1]
     filename = f"{uuid.uuid4()}.{ext}"
-    return os.path.join('uploads', filename)
+    return os.path.join("uploads", filename)
 
 
 class UserProfile(models.Model):
     """Extension of Django User model to add role-based permissions."""
+
     # User roles
-    NORMAL = 'normal'
-    POWER_USER = 'power_user'
-    ADMIN = 'admin'
+    NORMAL = "normal"
+    POWER_USER = "power_user"
+    ADMIN = "admin"
 
     ROLE_CHOICES = [
-        (NORMAL, 'Normal User'),
-        (POWER_USER, 'Power User'),
-        (ADMIN, 'Admin'),
+        (NORMAL, "Normal User"),
+        (POWER_USER, "Power User"),
+        (ADMIN, "Admin"),
     ]
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=NORMAL)
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -48,7 +49,8 @@ class UserProfile(models.Model):
 
 class EmailFile(models.Model):
     """Model to store uploaded email files."""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='email_files')
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_files")
     file = models.FileField(upload_to=get_file_path)
     original_filename = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(default=timezone.now)
@@ -60,9 +62,12 @@ class EmailFile(models.Model):
 
 class RuleGeneration(models.Model):
     """Model to store generated SpamAssassin rules."""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='rule_generations')
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="rule_generations"
+    )
     workspace_name = models.CharField(max_length=25, default="Unnamed Workspace")
-    email_files = models.ManyToManyField(EmailFile, related_name='rule_generations')
+    email_files = models.ManyToManyField(EmailFile, related_name="rule_generations")
     selected_headers = models.JSONField()
     prompt = models.TextField()
     prompt_modules = models.JSONField(default=list)
@@ -78,20 +83,23 @@ class RuleGeneration(models.Model):
     def clean(self):
         # Validate workspace name length
         if len(self.workspace_name) > 25:
-            raise ValidationError({"workspace_name": "Workspace name cannot exceed 25 characters."})
+            raise ValidationError(
+                {"workspace_name": "Workspace name cannot exceed 25 characters."}
+            )
 
 
 class PromptTemplate(models.Model):
     """Model to store prompt templates for rule generation."""
+
     # Visibility levels
-    GLOBAL = 'global'
-    USER_WORKSPACES = 'user_workspaces'
-    CURRENT_WORKSPACE = 'current_workspace'
+    GLOBAL = "global"
+    USER_WORKSPACES = "user_workspaces"
+    CURRENT_WORKSPACE = "current_workspace"
 
     VISIBILITY_CHOICES = [
-        (GLOBAL, 'Available Globally'),
-        (USER_WORKSPACES, 'Available to All User Workspaces'),
-        (CURRENT_WORKSPACE, 'Available to Current Workspace Only'),
+        (GLOBAL, "Available Globally"),
+        (USER_WORKSPACES, "Available to All User Workspaces"),
+        (CURRENT_WORKSPACE, "Available to Current Workspace Only"),
     ]
 
     name = models.CharField(max_length=100, unique=True)
@@ -100,11 +108,19 @@ class PromptTemplate(models.Model):
     is_base = models.BooleanField(default=False)
     is_module = models.BooleanField(default=False)
     module_type = models.CharField(max_length=50, blank=True, null=True)
-    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default=GLOBAL)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
-                                   related_name='created_templates')
-    workspace = models.ForeignKey(RuleGeneration, on_delete=models.SET_NULL, null=True, blank=True,
-                                  related_name='workspace_templates')
+    visibility = models.CharField(
+        max_length=20, choices=VISIBILITY_CHOICES, default=GLOBAL
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="created_templates"
+    )
+    workspace = models.ForeignKey(
+        RuleGeneration,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workspace_templates",
+    )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -114,17 +130,53 @@ class PromptTemplate(models.Model):
     def clean(self):
         # Only base prompts initialized by the system can be global without a creator
         if self.visibility == self.GLOBAL and not self.created_by and not self.is_base:
-            raise ValidationError("Global templates must have a creator " +
-                                  "unless they are system base prompts.")
+            raise ValidationError(
+                "Global templates must have a creator "
+                + "unless they are system base prompts."
+            )
 
         # Workspace-specific templates must have a workspace
         if self.visibility == self.CURRENT_WORKSPACE and not self.workspace:
-            raise ValidationError("Workspace-specific templates must be " +
-                                  "associated with a workspace.")
+            raise ValidationError(
+                "Workspace-specific templates must be " + "associated with a workspace."
+            )
 
         # Normal users can't create global templates
-        if self.created_by and hasattr(self.created_by, 'profile'):
+        if self.created_by and hasattr(self.created_by, "profile"):
             user_profile = self.created_by.profile
             if self.visibility == self.GLOBAL and not user_profile.is_power_user:
-                raise ValidationError("Only power users and admins can create " +
-                                      "globally available templates.")
+                raise ValidationError(
+                    "Only power users and admins can create "
+                    + "globally available templates."
+                )
+
+
+class WorkspaceShare(models.Model):
+    """Model to track workspace sharing permissions."""
+
+    # Permission levels
+    READ = "read"
+    WRITE = "write"
+
+    PERMISSION_CHOICES = [
+        (READ, "Read Only"),
+        (WRITE, "Read & Write"),
+    ]
+
+    workspace_name = models.CharField(max_length=25)
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="owned_workspace_shares"
+    )
+    shared_with = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="received_workspace_shares"
+    )
+    permission = models.CharField(
+        max_length=10, choices=PERMISSION_CHOICES, default=READ
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ("workspace_name", "owner", "shared_with")
+
+    def __str__(self):
+        return f"{self.workspace_name} shared with {self.shared_with.username}"

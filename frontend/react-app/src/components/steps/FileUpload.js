@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import api from '../../api';
 
-function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
+function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace, isReadOnly = false }) {
     const [isDragging, setIsDragging] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState({});
@@ -16,7 +16,7 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
             // Reset email files if no workspace
             setEmailFiles([]);
         }
-    }, [workspace?.name]); // Depend on workspace name to detect changes
+    }, [workspace?.name]);
 
     const fetchEmailFiles = useCallback(async () => {
         if (!workspace) return;
@@ -45,6 +45,9 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
     const handleDrop = (e) => {
         e.preventDefault();
         setIsDragging(false);
+
+        // Skip if read-only
+        if (isReadOnly) return;
 
         const files = e.dataTransfer.files;
         if (files.length > 0) {
@@ -150,6 +153,26 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
     return (
         <div>
             <h2 className="text-xl font-semibold mb-4">Upload Email Files</h2>
+            
+            {/* Add shared workspace notification */}
+            {workspace && workspace.isShared && (
+                <div className={`p-4 mb-4 rounded-lg border-l-4 ${
+                    workspace.permission === 'read' 
+                        ? 'bg-yellow-50 border-yellow-400 text-yellow-700' 
+                        : 'bg-blue-50 border-blue-400 text-blue-700'
+                }`}>
+                    <p>
+                        <span className="font-medium">Shared workspace: </span>
+                        {workspace.permission === 'read' 
+                            ? 'You have read-only access to this workspace.' 
+                            : 'You have read and write access to this workspace.'}
+                    </p>
+                    <p className="mt-1">
+                        Shared by: <span className="font-medium">{workspace.owner?.username}</span>
+                    </p>
+                </div>
+            )}
+            
             {workspace && workspace.isNew && (
                 <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
                     <p className="text-blue-700">
@@ -159,26 +182,31 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
                 </div>
             )}
 
-            {/* Dropzone */}
-            <div
-                className={`border-2 border-dashed rounded-lg p-8 mb-6 text-center cursor-pointer transition-colors ${isDragging ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300 hover:bg-gray-50'
+            {/* Only show file upload area if user has write permission */}
+            {!isReadOnly && (
+                <div
+                    className={`border-2 border-dashed rounded-lg p-8 mb-6 text-center cursor-pointer transition-colors ${
+                        isDragging 
+                            ? 'border-indigo-400 bg-indigo-50' 
+                            : 'border-gray-300 hover:bg-gray-50'
                     }`}
-                onClick={() => fileInputRef.current.click()}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-            >
-                <i className="fas fa-upload text-5xl text-gray-400 mb-4"></i>
-                <p className="text-gray-500">Drag and drop .eml files here or click to browse</p>
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept=".eml"
-                    multiple
-                    onChange={handleFileInput}
-                />
-            </div>
+                    onClick={() => fileInputRef.current.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                >
+                    <i className="fas fa-upload text-5xl text-gray-400 mb-4"></i>
+                    <p className="text-gray-500">Drag and drop .eml files here or click to browse</p>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept=".eml"
+                        multiple
+                        onChange={handleFileInput}
+                    />
+                </div>
+            )}
 
             {/* Upload progress */}
             {Object.keys(uploadProgress).length > 0 && (
@@ -235,12 +263,14 @@ function FileUpload({ emailFiles, setEmailFiles, goToNextStep, workspace }) {
                                     <span className="text-green-500 mr-3">
                                         <i className="fas fa-check-circle mr-1"></i> Uploaded
                                     </span>
-                                    <button
-                                        onClick={() => deleteFile(file.id)}
-                                        className="text-red-500 hover:text-red-700 transition-colors"
-                                    >
-                                        <i className="fas fa-trash-alt"></i>
-                                    </button>
+                                    {!isReadOnly && (
+                                        <button
+                                            onClick={() => deleteFile(file.id)}
+                                            className="text-red-500 hover:text-red-700 transition-colors"
+                                        >
+                                            <i className="fas fa-trash-alt"></i>
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))}
