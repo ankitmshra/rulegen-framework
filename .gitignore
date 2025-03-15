@@ -209,3 +209,4 @@ frontend/static/frontend/
 media/uploads/*
 # But keep the directory structure
 !media/uploads/.keep
+

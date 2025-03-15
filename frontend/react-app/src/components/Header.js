@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import WorkspaceSwitcher from './WorkspaceSwitcher';
 
 function Header({ currentWorkspace }) {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -53,24 +54,17 @@ function Header({ currentWorkspace }) {
                                 Rule Generation
                             </Link>
                             <Link
-                                to="/history"
-                                className={`${isActive('/history') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
-                            >
-                                History
-                            </Link>
-                            <Link
                                 to="/prompts"
                                 className={`${isActive('/prompts') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
                             >
                                 Prompt Manager
                             </Link>
                         </nav>
-                        <button
-                            onClick={handleCreateNew}
-                            className="bg-white text-indigo-600 px-3 py-1 rounded hover:bg-indigo-100 transition-colors"
-                        >
-                            New Workspace
-                        </button>
+                        <WorkspaceSwitcher
+                            currentWorkspace={currentWorkspace}
+                            onWorkspaceChange={(workspace, isNewWorkspace = false) =>
+                                navigate('/', { state: { newWorkspace: workspace, isNewWorkspace } })}
+                        />
                     </div>
                 </div>
 
@@ -91,28 +85,19 @@ function Header({ currentWorkspace }) {
                                 Rule Generation
                             </Link>
                             <Link
-                                to="/history"
-                                className={`${isActive('/history') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
-                                onClick={() => setMobileMenuOpen(false)}
-                            >
-                                History
-                            </Link>
-                            <Link
                                 to="/prompts"
                                 className={`${isActive('/prompts') ? 'text-white font-semibold' : 'text-indigo-200 hover:text-white'}`}
                                 onClick={() => setMobileMenuOpen(false)}
                             >
                                 Prompt Manager
                             </Link>
-                            <button
-                                onClick={() => {
-                                    handleCreateNew();
+                            <WorkspaceSwitcher
+                                currentWorkspace={currentWorkspace}
+                                onWorkspaceChange={(workspace, isNewWorkspace = false) => {
                                     setMobileMenuOpen(false);
+                                    navigate('/', { state: { newWorkspace: workspace, isNewWorkspace } });
                                 }}
-                                className="bg-white text-indigo-600 px-3 py-1 rounded hover:bg-indigo-100 transition-colors self-start"
-                            >
-                                New Workspace
-                            </button>
+                            />
                         </nav>
                     </div>
                 )}

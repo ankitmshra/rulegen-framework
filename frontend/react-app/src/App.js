@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import WorkspaceSelector from './components/WorkspaceSelector';
 import RuleGeneration from './components/RuleGeneration';
-import History from './components/History';
 import PromptManager from './components/PromptManager';
 import './index.css';
 
-function App() {
+// Component to handle location state
+function AppContent() {
+  const location = useLocation();
   const [currentWorkspace, setCurrentWorkspace] = useState(null);
   const [previousWorkspace, setPreviousWorkspace] = useState(null);
 
@@ -23,6 +24,30 @@ function App() {
       }
     }
   }, []);
+
+  // Handle workspace switching from location state
+  useEffect(() => {
+    if (location.state?.newWorkspace) {
+      if (currentWorkspace) {
+        setPreviousWorkspace(currentWorkspace);
+      }
+
+      const newWorkspace = location.state.newWorkspace;
+      const isNewWorkspace = location.state.isNewWorkspace;
+
+      setCurrentWorkspace(newWorkspace);
+
+      // Store the isNewWorkspace flag in localStorage to inform components
+      if (isNewWorkspace) {
+        localStorage.setItem('isNewWorkspace', 'true');
+      } else {
+        localStorage.removeItem('isNewWorkspace');
+      }
+
+      // Clear the location state to prevent re-setting on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Save current workspace to localStorage when it changes
   useEffect(() => {
@@ -50,44 +75,33 @@ function App() {
   };
 
   return (
-    <Router>
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header currentWorkspace={currentWorkspace} />
 
         <main className="flex-grow container mx-auto px-4 py-8">
           <Routes>
             <Route
-              path="/"
-              element={
-                currentWorkspace ?
-                  <Navigate to="/rulegen" /> :
-                  <WorkspaceSelector setCurrentWorkspace={switchWorkspace} />
-              }
+                path="/"
+                element={
+                  currentWorkspace ?
+                      <Navigate to="/rulegen" /> :
+                      <WorkspaceSelector setCurrentWorkspace={switchWorkspace} />
+                }
             />
             <Route
-              path="/rulegen"
-              element={
-                currentWorkspace ?
-                  <RuleGeneration
-                    workspace={currentWorkspace}
-                    setWorkspace={setCurrentWorkspace}
-                  /> :
-                  <Navigate to="/" />
-              }
+                path="/rulegen"
+                element={
+                  currentWorkspace ?
+                      <RuleGeneration
+                          workspace={currentWorkspace}
+                          setWorkspace={setCurrentWorkspace}
+                      /> :
+                      <Navigate to="/" />
+                }
             />
             <Route
-              path="/history"
-              element={
-                <History
-                  setWorkspace={switchWorkspace}
-                  currentWorkspace={currentWorkspace}
-                  restorePreviousWorkspace={restorePreviousWorkspace}
-                />
-              }
-            />
-            <Route
-              path="/prompts"
-              element={<PromptManager />}
+                path="/prompts"
+                element={<PromptManager />}
             />
           </Routes>
         </main>
@@ -116,7 +130,14 @@ function App() {
           </div>
         </footer>
       </div>
-    </Router>
+  );
+}
+
+function App() {
+  return (
+      <Router>
+        <AppContent />
+      </Router>
   );
 }
 

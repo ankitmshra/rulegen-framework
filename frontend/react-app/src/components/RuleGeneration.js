@@ -14,6 +14,7 @@ function RuleGeneration({ workspace, setWorkspace }) {
     const [selectedModules, setSelectedModules] = useState([]);
     const [ruleGeneration, setRuleGeneration] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isNewWorkspace, setIsNewWorkspace] = useState(false);
 
     const steps = [
         { title: 'Upload Files', icon: 'fa-upload' },
@@ -21,12 +22,30 @@ function RuleGeneration({ workspace, setWorkspace }) {
         { title: 'Generate Rules', icon: 'fa-magic' }
     ];
 
+    // Check if this is a new workspace
+    useEffect(() => {
+        const isNew = localStorage.getItem('isNewWorkspace') === 'true';
+        setIsNewWorkspace(isNew);
+
+        // Clear the flag after reading it
+        if (isNew) {
+            localStorage.removeItem('isNewWorkspace');
+        }
+    }, []);
+
     // If workspace has a ruleGenerationId, load it
     useEffect(() => {
-        if (workspace?.ruleGenerationId) {
+        if (workspace?.ruleGenerationId && !isNewWorkspace) {
             loadRuleGeneration(workspace.ruleGenerationId);
+        } else if (isNewWorkspace) {
+            // Reset state for new workspace
+            setEmailFiles([]);
+            setSelectedHeaders([]);
+            setSelectedModules([]);
+            setRuleGeneration(null);
+            setCurrentStep(0);
         }
-    }, [workspace]);
+    }, [workspace, isNewWorkspace]);
 
     const loadRuleGeneration = async (ruleGenerationId) => {
         try {

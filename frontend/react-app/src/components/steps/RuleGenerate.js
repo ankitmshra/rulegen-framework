@@ -15,24 +15,27 @@ marked.setOptions({
 });
 
 function RuleGenerate({
-    workspace,
-    emailFiles,
-    selectedHeaders,
-    selectedModules,
-    setSelectedModules,
-    ruleGeneration,
-    setRuleGeneration,
-    goToPreviousStep
-}) {
+                          workspace,
+                          emailFiles,
+                          selectedHeaders,
+                          selectedModules,
+                          setSelectedModules,
+                          ruleGeneration,
+                          setRuleGeneration,
+                          goToPreviousStep
+                      }) {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
     const [prompt, setPrompt] = useState('');
     const [customPrompt, setCustomPrompt] = useState('');
-    const [rule, setRule] = useState('');
     const [promptLoading, setPromptLoading] = useState(false);
     const [basePrompts, setBasePrompts] = useState([]);
     const [selectedBasePrompt, setSelectedBasePrompt] = useState(null);
     const [promptMetadata, setPromptMetadata] = useState(null);
+
+    // Response history state
+    const [responseHistory, setResponseHistory] = useState([]);
+    const [currentHistoryIndex, setCurrentHistoryIndex] = useState(0);
 
     // Load available base prompts when component mounts
     useEffect(() => {
@@ -46,14 +49,14 @@ function RuleGenerate({
         }
     }, [emailFiles, selectedHeaders, selectedModules, selectedBasePrompt, ruleGeneration]);
 
-    // If there's an existing rule, display it
+    // If there's an existing rule, display it and add to history if not already there
     useEffect(() => {
         if (ruleGeneration?.rule) {
-            setRule(ruleGeneration.rule);
             if (ruleGeneration.prompt) {
                 setPrompt(ruleGeneration.prompt);
                 setCustomPrompt(ruleGeneration.prompt);
             }
+
             if (ruleGeneration.prompt_metadata) {
                 setPromptMetadata(ruleGeneration.prompt_metadata);
 
@@ -62,8 +65,46 @@ function RuleGenerate({
                     setSelectedBasePrompt(ruleGeneration.prompt_metadata.base_prompt.id.toString());
                 }
             }
+
+            // Check if this rule is already in the history
+            const ruleExists = responseHistory.some(item => item.id === ruleGeneration.id);
+
+            if (!ruleExists) {
+                // Add this rule to history as the most recent
+                setResponseHistory(prev => [
+                    {
+                        id: ruleGeneration.id,
+                        rule: ruleGeneration.rule,
+                        date: ruleGeneration.created_at || new Date().toISOString(),
+                        title: `Response ${prev.length + 1}`
+                    },
+                    ...prev
+                ]);
+                setCurrentHistoryIndex(0);
+            }
         }
     }, [ruleGeneration]);
+
+    // Load history from localStorage on component mount
+    useEffect(() => {
+        const savedHistory = localStorage.getItem(`ruleHistory-${workspace.name}`);
+        if (savedHistory) {
+            try {
+                const history = JSON.parse(savedHistory);
+                setResponseHistory(history);
+                setCurrentHistoryIndex(0); // Start with the most recent
+            } catch (e) {
+                console.error('Error parsing saved history:', e);
+            }
+        }
+    }, [workspace.name]);
+
+    // Save history to localStorage when it changes
+    useEffect(() => {
+        if (responseHistory.length > 0) {
+            localStorage.setItem(`ruleHistory-${workspace.name}`, JSON.stringify(responseHistory));
+        }
+    }, [responseHistory, workspace.name]);
 
     const fetchBasePrompts = async () => {
         try {
@@ -142,7 +183,6 @@ function RuleGenerate({
 
                 if (response.data.is_complete) {
                     clearInterval(intervalId);
-                    setRule(response.data.rule);
                     setIsGenerating(false);
                     setIsPolling(false);
 
@@ -161,20 +201,79 @@ function RuleGenerate({
     };
 
     const copyToClipboard = () => {
-        navigator.clipboard.writeText(rule)
-            .then(() => {
-                alert('Rule copied to clipboard');
-            })
-            .catch(err => {
-                console.error('Failed to copy rule:', err);
-                alert('Failed to copy rule');
-            });
+        const currentResponse = responseHistory[currentHistoryIndex];
+        if (currentResponse) {
+            navigator.clipboard.writeText(currentResponse.rule)
+                .then(() => {
+                    alert('Rule copied to clipboard');
+                })
+                .catch(err => {
+                    console.error('Failed to copy rule:', err);
+                    alert('Failed to copy rule');
+                });
+        }
     };
 
     // Render the markdown rule as HTML
     const renderMarkdown = () => {
-        if (!rule) return '';
-        return marked(rule);
+        const currentResponse = responseHistory[currentHistoryIndex];
+        if (!currentResponse) return '';
+        return marked(currentResponse.rule);
+    };
+
+    // Navigation handlers for history
+    const goToHistoryItem = (index) => {
+        setCurrentHistoryIndex(Math.max(0, Math.min(index, responseHistory.length - 1)));
+    };
+
+    const renderHistoryPagination = () => {
+        if (responseHistory.length <= 1) return null;
+
+        // Format datetime for display
+        const formatDate = (dateString) => {
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                return "Unknown time";
+            }
+        };
+
+        return (
+            <div className="flex justify-center mt-4">
+                <nav className="inline-flex rounded-md shadow-sm" aria-label="Response History">
+                    <button
+                        onClick={() => goToHistoryItem(currentHistoryIndex + 1)}
+                        disabled={currentHistoryIndex >= responseHistory.length - 1}
+                        className="px-3 py-1 rounded-l-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        title="Previous response"
+                    >
+                        <span className="sr-only">Previous</span>
+                        <i className="fas fa-chevron-left"></i>
+                    </button>
+
+                    <div className="px-3 py-1 border-t border-b border-gray-300 bg-white">
+                        <span className="text-sm font-medium">
+                            Response {responseHistory.length - currentHistoryIndex} of {responseHistory.length}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-2">
+                            {responseHistory[currentHistoryIndex] ?
+                                formatDate(responseHistory[currentHistoryIndex].date) : ''}
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={() => goToHistoryItem(currentHistoryIndex - 1)}
+                        disabled={currentHistoryIndex <= 0}
+                        className="px-3 py-1 rounded-r-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        title="Next response"
+                    >
+                        <span className="sr-only">Next</span>
+                        <i className="fas fa-chevron-right"></i>
+                    </button>
+                </nav>
+            </div>
+        );
     };
 
     return (
@@ -274,8 +373,8 @@ function RuleGenerate({
                 </div>
             )}
 
-            {/* Generation Result */}
-            {rule && (
+            {/* Generation Result with Fixed Height and Scrolling */}
+            {responseHistory.length > 0 && (
                 <div className="mb-6">
                     <div className="flex justify-between items-center mb-2">
                         <h3 className="font-semibold">Generated SpamAssassin Rule:</h3>
@@ -286,12 +385,15 @@ function RuleGenerate({
                             <i className="fas fa-copy mr-1"></i> Copy to Clipboard
                         </button>
                     </div>
-                    <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                    <div className="border border-gray-200 rounded-lg">
                         <div
-                            className="markdown-content p-4"
+                            className="markdown-content p-4 overflow-y-auto h-96" // Fixed height with scrolling
                             dangerouslySetInnerHTML={{ __html: renderMarkdown() }}
                         ></div>
                     </div>
+
+                    {/* History Pagination Controls */}
+                    {renderHistoryPagination()}
                 </div>
             )}
 
@@ -303,23 +405,13 @@ function RuleGenerate({
                 >
                     Back: Select Headers
                 </button>
-                {!rule ? (
-                    <button
-                        onClick={generateRules}
-                        className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                        disabled={isGenerating || promptLoading}
-                    >
-                        Generate Rules
-                    </button>
-                ) : (
-                    <button
-                        onClick={generateRules}
-                        className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                        disabled={isGenerating || promptLoading}
-                    >
-                        Regenerate Rules
-                    </button>
-                )}
+                <button
+                    onClick={generateRules}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                    disabled={isGenerating || promptLoading}
+                >
+                    {responseHistory.length > 0 ? 'Generate New Response' : 'Generate Rules'}
+                </button>
             </div>
         </div>
     );
