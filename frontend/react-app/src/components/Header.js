@@ -5,10 +5,14 @@ import { useAuth } from '../context/AuthContext';
 function Header() {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const navigate = useNavigate();
-    const { logout } = useAuth();
+    const { logout, isAdmin } = useAuth();
 
     const handleWorkspaceManager = () => {
         navigate('/workspace/new');
+    };
+
+    const handleSettings = () => {
+        navigate('/settings');
     };
 
     const handleLogout = async () => {
@@ -48,9 +52,19 @@ function Header() {
                             <i className="fas fa-folder-open mr-2"></i> Workspaces
                         </button>
                         
+                        {/* Settings icon */}
+                        <button
+                            onClick={handleSettings}
+                            className="text-indigo-200 hover:text-white"
+                            title="Settings"
+                        >
+                            <i className="fas fa-cog text-xl"></i>
+                        </button>
+                        
                         <button
                             onClick={handleLogout}
                             className="text-indigo-200 hover:text-white"
+                            title="Logout"
                         >
                             <i className="fas fa-sign-out-alt mr-1"></i> Logout
                         </button>
@@ -70,6 +84,17 @@ function Header() {
                             >
                                 <i className="fas fa-folder-open mr-1"></i> Workspaces
                             </button>
+                            
+                            <button
+                                onClick={() => {
+                                    setMobileMenuOpen(false);
+                                    handleSettings();
+                                }}
+                                className="text-indigo-200 hover:text-white text-left"
+                            >
+                                <i className="fas fa-cog mr-1"></i> Settings
+                            </button>
+                            
                             <button
                                 onClick={handleLogout}
                                 className="text-indigo-200 hover:text-white text-left"

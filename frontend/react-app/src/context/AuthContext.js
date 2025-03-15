@@ -31,11 +31,35 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await api.post('/api/auth/logout/');
+            const response = await api.post('/api/auth/logout/');
+            
+            // Clear any user-related localStorage data
+            if (response.data.user_id) {
+                // Clear workspace data for this user
+                localStorage.removeItem(`workspace-${response.data.user_id}`);
+                
+                // Clear any other user-specific localStorage items
+                localStorage.removeItem('isNewWorkspace');
+            }
+            
+            // Clear all user data from state
             setUser(null);
         } catch (error) {
             console.error('Logout error:', error);
         }
+    };
+
+    // Helper functions to check user roles
+    const isAdmin = () => {
+        return user && (user.isAdmin === true || user.role === 'admin');
+    };
+
+    const isPowerUser = () => {
+        return user && (user.isPowerUser === true || user.role === 'power_user' || user.role === 'admin');
+    };
+
+    const isNormalUser = () => {
+        return user && !isAdmin() && !isPowerUser();
     };
 
     const value = {
@@ -44,6 +68,9 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         isAuthenticated: !!user,
+        isAdmin,
+        isPowerUser,
+        isNormalUser
     };
 
     return (

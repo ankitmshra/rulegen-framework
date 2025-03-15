@@ -4,8 +4,10 @@ import MainLayout from './components/MainLayout';
 import WorkspaceSelector from './components/WorkspaceSelector';
 import RuleGeneration from './components/RuleGeneration';
 import PromptManager from './components/PromptManager';
+import Settings from './components/Settings';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './index.css';
 
@@ -15,7 +17,7 @@ function AppContent() {
   const navigate = useNavigate();
   const [currentWorkspace, setCurrentWorkspace] = useState(null);
   const [previousWorkspace, setPreviousWorkspace] = useState(null);
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
 
   // Load current workspace from localStorage on mount
   useEffect(() => {
@@ -144,6 +146,16 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <PromptManager />
+            </ProtectedRoute>
+          }
+        />
+        
+        {/* Settings Page - accessible to all users */}
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
             </ProtectedRoute>
           }
         />

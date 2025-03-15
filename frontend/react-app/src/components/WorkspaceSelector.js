@@ -9,19 +9,28 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
     const [recentWorkspaces, setRecentWorkspaces] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
+    const [showAllWorkspaces, setShowAllWorkspaces] = useState(false);
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, isAdmin } = useAuth();
 
     useEffect(() => {
         // Load recent workspaces
         fetchWorkspaces();
-    }, []);
+    }, [showAllWorkspaces]);
 
     const fetchWorkspaces = async () => {
         try {
             setIsLoading(true);
-            const response = await api.get('/api/rule-generations/workspaces/');
-            setRecentWorkspaces(response.data.slice(0, 5)); // Get top 5 recent workspaces
+            // Include 'all' parameter for admins who want to see all workspaces
+            const url = isAdmin() && showAllWorkspaces 
+                ? '/api/rule-generations/workspaces/?all=true'
+                : '/api/rule-generations/workspaces/';
+                
+            const response = await api.get(url);
+            
+            // If showing all workspaces, get more results
+            const limit = isAdmin() && showAllWorkspaces ? 20 : 5;
+            setRecentWorkspaces(response.data.slice(0, limit));
         } catch (error) {
             console.error('Error fetching workspaces:', error);
         } finally {
@@ -36,12 +45,17 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
             setError('Please enter a workspace name');
             return;
         }
+        
+        // Enforce 25 character limit
+        if (workspaceName.length > 25) {
+            setError('Workspace name cannot exceed 25 characters');
+            return;
+        }
 
         try {
             setIsCreating(true);
             
             // Create a new rule generation with this workspace name
-            // This registers the workspace in the database immediately
             const response = await api.post('/api/rule-generations/', {
                 workspace_name: workspaceName,
                 email_file_ids: [],  // Empty array initially
@@ -69,7 +83,11 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
             });
         } catch (error) {
             console.error('Error creating workspace:', error);
-            setError('Failed to create workspace. Please try again.');
+            if (error.response?.data?.workspace_name) {
+                setError(error.response.data.workspace_name[0]);
+            } else {
+                setError('Failed to create workspace. Please try again.');
+            }
         } finally {
             setIsCreating(false);
         }
@@ -95,6 +113,10 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
         });
     };
 
+    const toggleShowAllWorkspaces = () => {
+        setShowAllWorkspaces(!showAllWorkspaces);
+    };
+
     return (
         <div className="max-w-xl mx-auto">
             <div className="bg-white p-8 rounded-lg shadow-md mb-6">
@@ -106,7 +128,7 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                             className="block text-gray-700 font-medium mb-2"
                             htmlFor="workspace-name"
                         >
-                            Workspace Name
+                            Workspace Name <span className="text-sm text-gray-500">(max 25 characters)</span>
                         </label>
                         <input
                             id="workspace-name"
@@ -118,9 +140,13 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                                 setWorkspaceName(e.target.value);
                                 if (error) setError('');
                             }}
+                            maxLength={25}
                             placeholder="Enter a name for this investigation"
                         />
                         {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+                        <div className="text-right text-sm text-gray-500 mt-1">
+                            {workspaceName.length}/25 characters
+                        </div>
                     </div>
 
                     <button
@@ -143,7 +169,21 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
 
             {/* Recent workspaces */}
             <div className="bg-white p-8 rounded-lg shadow-md">
-                <h3 className="text-xl font-semibold mb-4">Recent Workspaces</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-semibold">
+                        {isAdmin() && showAllWorkspaces ? 'All Workspaces' : 'Recent Workspaces'}
+                    </h3>
+                    
+                    {/* Toggle for admins to show all workspaces */}
+                    {isAdmin() && (
+                        <button
+                            onClick={toggleShowAllWorkspaces}
+                            className="text-indigo-600 hover:text-indigo-800 text-sm"
+                        >
+                            {showAllWorkspaces ? 'Show My Recent' : 'Show All'}
+                        </button>
+                    )}
+                </div>
 
                 {isLoading ? (
                     <div className="text-center py-4">
@@ -151,7 +191,7 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                         <p className="mt-2 text-gray-600">Loading workspaces...</p>
                     </div>
                 ) : recentWorkspaces.length === 0 ? (
-                    <p className="text-gray-500 py-2">No recent workspaces found</p>
+                    <p className="text-gray-500 py-2">No workspaces found</p>
                 ) : (
                     <ul className="divide-y">
                         {recentWorkspaces.map((workspace) => (
@@ -164,6 +204,10 @@ function WorkspaceSelector({ setCurrentWorkspace }) {
                                         <div className="font-medium">{workspace.workspace_name}</div>
                                         <div className="text-sm text-gray-500">
                                             Created: {new Date(workspace.latest_date).toLocaleString()}
+                                            {/* Show username for admins viewing all workspaces */}
+                                            {isAdmin() && showAllWorkspaces && workspace.user__username && (
+                                                <span className="ml-2">by {workspace.user__username}</span>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="text-indigo-600">

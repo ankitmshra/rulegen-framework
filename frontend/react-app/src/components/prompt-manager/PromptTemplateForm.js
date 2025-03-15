@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import api from '../../api';
 
-function PromptTemplateForm({ template, onSave, onCancel }) {
+function PromptTemplateForm({ template, onSave, onCancel, isAdmin, isPowerUser }) {
     const [formData, setFormData] = useState({
         name: '',
         description: '',
@@ -8,9 +9,12 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
         is_base: false,
         is_module: false,
         module_type: '',
+        visibility: 'current_workspace',  // Default to workspace-level for new templates
     });
     const [errors, setErrors] = useState({});
     const [isSaving, setIsSaving] = useState(false);
+    const [workspaces, setWorkspaces] = useState([]);
+    const [selectedWorkspace, setSelectedWorkspace] = useState('');
 
     // Initialize form with template data if editing
     useEffect(() => {
@@ -22,9 +26,40 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
                 is_base: template.is_base || false,
                 is_module: template.is_module || false,
                 module_type: template.module_type || '',
+                visibility: template.visibility || 'current_workspace',
+                workspace: template.workspace || null,
             });
+
+            if (template.workspace) {
+                setSelectedWorkspace(template.workspace.toString());
+            }
         }
     }, [template]);
+
+    // Load workspaces for workspace selection
+    useEffect(() => {
+        if (formData.visibility === 'current_workspace') {
+            fetchWorkspaces();
+        }
+    }, [formData.visibility]);
+
+    const fetchWorkspaces = async () => {
+        try {
+            const response = await api.get('/api/rule-generations/workspaces/');
+            setWorkspaces(response.data);
+            
+            // If there's only one workspace and no selection, select it
+            if (response.data.length === 1 && !selectedWorkspace) {
+                setSelectedWorkspace(response.data[0].latest_id.toString());
+                setFormData(prev => ({
+                    ...prev,
+                    workspace: response.data[0].latest_id
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching workspaces:', error);
+        }
+    };
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -42,6 +77,15 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
         }
     };
 
+    const handleWorkspaceChange = (e) => {
+        const value = e.target.value;
+        setSelectedWorkspace(value);
+        setFormData(prev => ({
+            ...prev,
+            workspace: value ? parseInt(value) : null
+        }));
+    };
+
     const validate = () => {
         const newErrors = {};
 
@@ -57,11 +101,14 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
             newErrors.module_type = 'Module type is required for module templates';
         }
 
-        // Add validation to ensure only one base prompt exists
-        if (formData.is_base && template?.is_base === false) {
-            // This would be checked against the API in a real implementation
-            // Here we're just adding it to demonstrate validation logic
-            // newErrors.is_base = 'Only one base prompt can exist';
+        // Visibility validation based on user role
+        if (formData.visibility === 'global' && !isPowerUser) {
+            newErrors.visibility = 'Only power users and admins can create global templates';
+        }
+
+        // Workspace selection for workspace-specific templates
+        if (formData.visibility === 'current_workspace' && !formData.workspace) {
+            newErrors.workspace = 'Please select a workspace for workspace-specific templates';
         }
 
         setErrors(newErrors);
@@ -77,7 +124,15 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
 
         setIsSaving(true);
 
-        const result = await onSave(formData);
+        // Adjust data for submission
+        const dataToSubmit = {...formData};
+        
+        // If visibility is not workspace-specific, remove workspace
+        if (dataToSubmit.visibility !== 'current_workspace') {
+            dataToSubmit.workspace = null;
+        }
+
+        const result = await onSave(dataToSubmit);
 
         if (!result.success) {
             // Handle API validation errors
@@ -162,6 +217,7 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
                                 className="rounded text-indigo-600 focus:ring-indigo-500 mr-2"
                                 checked={formData.is_base}
                                 onChange={handleChange}
+                                disabled={!isAdmin && template?.is_base}
                             />
                             <label className="text-gray-700 font-medium" htmlFor="is_base">
                                 Is Base Prompt
@@ -169,6 +225,7 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
                         </div>
                         <p className="text-sm text-gray-500 mt-1">
                             Only one base prompt can exist in the system.
+                            {!isAdmin && template?.is_base && " Only admins can modify this setting."}
                         </p>
                         {errors.is_base && <p className="text-red-500 text-sm mt-1">{errors.is_base}</p>}
                     </div>
@@ -209,6 +266,95 @@ function PromptTemplateForm({ template, onSave, onCancel }) {
                             </p>
                         </div>
                     )}
+                </div>
+
+                {/* Visibility settings */}
+                <div className="mb-6">
+                    <label className="block text-gray-700 font-medium mb-2">
+                        Template Visibility
+                    </label>
+                    
+                    <div className="space-y-3">
+                        {/* Global visibility - power users and admins only */}
+                        <div className="flex items-start">
+                            <input
+                                type="radio"
+                                id="visibility_global"
+                                name="visibility"
+                                value="global"
+                                className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 mr-2"
+                                checked={formData.visibility === 'global'}
+                                onChange={handleChange}
+                                disabled={!isPowerUser}
+                            />
+                            <div>
+                                <label className="text-gray-700" htmlFor="visibility_global">
+                                    Global - Available to all users
+                                </label>
+                                {!isPowerUser && (
+                                    <p className="text-sm text-red-500">
+                                        Only power users and admins can create global templates
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* User workspaces visibility */}
+                        <div className="flex items-start">
+                            <input
+                                type="radio"
+                                id="visibility_user_workspaces"
+                                name="visibility"
+                                value="user_workspaces"
+                                className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 mr-2"
+                                checked={formData.visibility === 'user_workspaces'}
+                                onChange={handleChange}
+                            />
+                            <div>
+                                <label className="text-gray-700" htmlFor="visibility_user_workspaces">
+                                    All My Workspaces - Available to all your workspaces
+                                </label>
+                            </div>
+                        </div>
+                        
+                        {/* Workspace-specific visibility */}
+                        <div className="flex items-start">
+                            <input
+                                type="radio"
+                                id="visibility_current_workspace"
+                                name="visibility"
+                                value="current_workspace"
+                                className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 mr-2"
+                                checked={formData.visibility === 'current_workspace'}
+                                onChange={handleChange}
+                            />
+                            <div className="flex-grow">
+                                <label className="text-gray-700" htmlFor="visibility_current_workspace">
+                                    Specific Workspace - Available to a single workspace
+                                </label>
+                                
+                                {formData.visibility === 'current_workspace' && (
+                                    <div className="mt-2">
+                                        <select
+                                            value={selectedWorkspace}
+                                            onChange={handleWorkspaceChange}
+                                            className={`w-full p-2 border rounded-md ${errors.workspace ? 'border-red-500' : 'border-gray-300'}`}
+                                        >
+                                            <option value="">-- Select a workspace --</option>
+                                            {workspaces.map(workspace => (
+                                                <option key={workspace.latest_id} value={workspace.latest_id}>
+                                                    {workspace.workspace_name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors.workspace && <p className="text-red-500 text-sm mt-1">{errors.workspace}</p>}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {errors.visibility && <p className="text-red-500 text-sm mt-1">{errors.visibility}</p>}
                 </div>
 
                 <div className="flex justify-end space-x-3">
