@@ -47,45 +47,98 @@ class UserProfile(models.Model):
         return self.role == self.NORMAL
 
 
+class Workspace(models.Model):
+    """Model to represent a workspace for rule generation."""
+
+    name = models.CharField(max_length=25)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workspaces")
+    created_at = models.DateTimeField(default=timezone.now)
+    description = models.TextField(blank=True)
+
+    # Fields for tracking which headers are selected for this workspace
+    selected_headers = models.JSONField(default=list)
+
+    class Meta:
+        unique_together = ["name", "user"]  # Workspace names must be unique per user
+
+    def __str__(self):
+        return f"{self.name} - {self.user.username}"
+
+    def clean(self):
+        # Validate workspace name length
+        if len(self.name) > 25:
+            raise ValidationError(
+                {"name": "Workspace name cannot exceed 25 characters."}
+            )
+
+
+class WorkspaceShare(models.Model):
+    """Model to track workspace sharing permissions."""
+
+    # Permission levels
+    READ = "read"
+    WRITE = "write"
+
+    PERMISSION_CHOICES = [
+        (READ, "Read Only"),
+        (WRITE, "Read & Write"),
+    ]
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="shares"
+    )
+    shared_with = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="shared_workspaces"
+    )
+    permission = models.CharField(
+        max_length=10, choices=PERMISSION_CHOICES, default=READ
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        unique_together = ["workspace", "shared_with"]
+
+    def __str__(self):
+        return f"{self.workspace.name} shared with {self.shared_with.username}"
+
+
 class EmailFile(models.Model):
     """Model to store uploaded email files."""
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="email_files")
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="email_files"
+    )
+    uploaded_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="uploaded_files"
+    )
     file = models.FileField(upload_to=get_file_path)
     original_filename = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(default=timezone.now)
     processed = models.BooleanField(default=False)
 
     def __str__(self):
-        return self.original_filename
+        return f"{self.original_filename} - {self.workspace.name}"
 
 
 class RuleGeneration(models.Model):
     """Model to store generated SpamAssassin rules."""
 
-    user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="rule_generations"
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="rule_generations"
     )
-    workspace_name = models.CharField(max_length=25, default="Unnamed Workspace")
-    email_files = models.ManyToManyField(EmailFile, related_name="rule_generations")
-    selected_headers = models.JSONField()
     prompt = models.TextField()
     prompt_modules = models.JSONField(default=list)
     base_prompt_id = models.IntegerField(null=True, blank=True)
     prompt_metadata = models.JSONField(default=dict, blank=True)
     rule = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="created_rules"
+    )
     is_complete = models.BooleanField(default=False)
 
     def __str__(self):
-        return f"{self.workspace_name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
-
-    def clean(self):
-        # Validate workspace name length
-        if len(self.workspace_name) > 25:
-            raise ValidationError(
-                {"workspace_name": "Workspace name cannot exceed 25 characters."}
-            )
+        return f"{self.workspace.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
 
 
 class PromptTemplate(models.Model):
@@ -94,12 +147,12 @@ class PromptTemplate(models.Model):
     # Visibility levels
     GLOBAL = "global"
     USER_WORKSPACES = "user_workspaces"
-    CURRENT_WORKSPACE = "current_workspace"
+    WORKSPACE = "workspace"
 
     VISIBILITY_CHOICES = [
         (GLOBAL, "Available Globally"),
         (USER_WORKSPACES, "Available to All User Workspaces"),
-        (CURRENT_WORKSPACE, "Available to Current Workspace Only"),
+        (WORKSPACE, "Available to Specific Workspace"),
     ]
 
     name = models.CharField(max_length=100, unique=True)
@@ -115,11 +168,11 @@ class PromptTemplate(models.Model):
         User, on_delete=models.SET_NULL, null=True, related_name="created_templates"
     )
     workspace = models.ForeignKey(
-        RuleGeneration,
+        Workspace,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="workspace_templates",
+        related_name="templates",
     )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -136,7 +189,7 @@ class PromptTemplate(models.Model):
             )
 
         # Workspace-specific templates must have a workspace
-        if self.visibility == self.CURRENT_WORKSPACE and not self.workspace:
+        if self.visibility == self.WORKSPACE and not self.workspace:
             raise ValidationError(
                 "Workspace-specific templates must be " + "associated with a workspace."
             )
@@ -149,34 +202,3 @@ class PromptTemplate(models.Model):
                     "Only power users and admins can create "
                     + "globally available templates."
                 )
-
-
-class WorkspaceShare(models.Model):
-    """Model to track workspace sharing permissions."""
-
-    # Permission levels
-    READ = "read"
-    WRITE = "write"
-
-    PERMISSION_CHOICES = [
-        (READ, "Read Only"),
-        (WRITE, "Read & Write"),
-    ]
-
-    workspace_name = models.CharField(max_length=25)
-    owner = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="owned_workspace_shares"
-    )
-    shared_with = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="received_workspace_shares"
-    )
-    permission = models.CharField(
-        max_length=10, choices=PERMISSION_CHOICES, default=READ
-    )
-    created_at = models.DateTimeField(default=timezone.now)
-
-    class Meta:
-        unique_together = ("workspace_name", "owner", "shared_with")
-
-    def __str__(self):
-        return f"{self.workspace_name} shared with {self.shared_with.username}"

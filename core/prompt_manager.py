@@ -1,6 +1,7 @@
 """
 Module for managing prompt templates and building prompts for rule generation.
 """
+
 import json
 from typing import List, Dict, Optional, Any
 
@@ -19,7 +20,8 @@ class PromptManager:
             List of base prompts
         """
         from .models import PromptTemplate
-        return PromptTemplate.objects.filter(is_base=True).order_by('name')
+
+        return PromptTemplate.objects.filter(is_base=True).order_by("name")
 
     @staticmethod
     def get_base_prompt(base_prompt_id: Optional[int] = None) -> str:
@@ -33,23 +35,28 @@ class PromptManager:
             Base prompt string or empty string if none found
         """
         from .models import PromptTemplate
+
         try:
             if base_prompt_id:
                 # Get specific base prompt
-                base_prompt = PromptTemplate.objects.get(id=base_prompt_id, is_base=True)
+                base_prompt = PromptTemplate.objects.get(
+                    id=base_prompt_id, is_base=True
+                )
             else:
                 # Get the first base prompt
                 base_prompt = PromptTemplate.objects.filter(is_base=True).first()
 
             if base_prompt:
                 return base_prompt.template
-            else:
-                # Log the issue rather than providing a default
-                import logging
-                logging.error("No base prompt template found in the database")
-                return ""
+
+            # Log the issue rather than providing a default
+            import logging
+
+            logging.error("No base prompt template found in the database")
+            return ""
         except PromptTemplate.DoesNotExist:
             import logging
+
             logging.error(f"Base prompt with ID {base_prompt_id} not found")
             return ""
 
@@ -65,6 +72,7 @@ class PromptManager:
             Module prompt string or empty string if not found
         """
         from .models import PromptTemplate
+
         try:
             module = PromptTemplate.objects.get(is_module=True, module_type=module_type)
             return module.template
@@ -83,26 +91,27 @@ class PromptManager:
             Dictionary with formatted headers and body sections
         """
         if not analysis_data:
-            return {
-                "headers": "{}",
-                "body_plain": "",
-                "body_html": ""
-            }
+            return {"headers": "{}", "body_plain": "", "body_html": ""}
 
         # Extract headers
-        headers = json.dumps(analysis_data[0]['headers'], indent=2)
+        headers = json.dumps(analysis_data[0]["headers"], indent=2)
 
         # Extract body samples - limit length to avoid overly long prompts
-        body_plain = analysis_data[0]['body'].get('plain', '')[:1000] if analysis_data else ""
-        body_html = analysis_data[0]['body'].get('html', '')[:1000] if analysis_data else ""
+        body_plain = (
+            analysis_data[0]["body"].get("plain", "")[:1000] if analysis_data else ""
+        )
+        body_html = (
+            analysis_data[0]["body"].get("html", "")[:1000] if analysis_data else ""
+        )
 
         # Extract any URLs found
         urls = []
         for data in analysis_data:
-            if not data.get('body'):
+            if not data.get("body"):
                 continue
-            html = data['body'].get('html', '')
+            html = data["body"].get("html", "")
             import re
+
             found_urls = re.findall(r'https?://[^\s<>"]+', html)
             urls.extend(found_urls[:10])  # Limit to first 10 URLs
 
@@ -110,14 +119,14 @@ class PromptManager:
             "headers": headers,
             "body_plain": body_plain,
             "body_html": body_html,
-            "urls": list(set(urls))[:10]  # Remove duplicates and limit
+            "urls": list(set(urls))[:10],  # Remove duplicates and limit
         }
 
     @staticmethod
     def build_prompt(
         analysis_data: List[Dict],
         selected_modules: List[str] = None,
-        base_prompt_id: Optional[int] = None
+        base_prompt_id: Optional[int] = None,
     ) -> Dict:
         """
         Build a complete prompt using the base prompt and selected modules.
@@ -140,19 +149,21 @@ class PromptManager:
         if not prompt_content:
             # Return empty result if no base prompt found
             return {
-                'prompt': '',
-                'metadata': {
-                    'base_prompt': {'id': None, 'name': 'No Base Prompt Found'},
-                    'modules': [],
-                    'email_sample_count': len(analysis_data)
-                }
+                "prompt": "",
+                "metadata": {
+                    "base_prompt": {"id": None, "name": "No Base Prompt Found"},
+                    "modules": [],
+                    "email_sample_count": len(analysis_data),
+                },
             }
 
         # Get base prompt information for metadata
         base_prompt = None
         if base_prompt_id:
             try:
-                base_prompt = PromptTemplate.objects.get(id=base_prompt_id, is_base=True)
+                base_prompt = PromptTemplate.objects.get(
+                    id=base_prompt_id, is_base=True
+                )
             except PromptTemplate.DoesNotExist:
                 pass
         else:
@@ -189,12 +200,16 @@ Extracted URLs:
             if module_content:
                 prompt_content += f"\n\n{module_content}"
                 try:
-                    module_obj = PromptTemplate.objects.get(is_module=True, module_type=module)
-                    added_modules.append({
-                        'id': module_obj.id,
-                        'name': module_obj.name,
-                        'type': module_obj.module_type
-                    })
+                    module_obj = PromptTemplate.objects.get(
+                        is_module=True, module_type=module
+                    )
+                    added_modules.append(
+                        {
+                            "id": module_obj.id,
+                            "name": module_obj.name,
+                            "type": module_obj.module_type,
+                        }
+                    )
                 except PromptTemplate.DoesNotExist:
                     pass
 
@@ -210,15 +225,15 @@ Extracted URLs:
 
         # Prepare response with metadata
         result = {
-            'prompt': prompt_content,
-            'metadata': {
-                'base_prompt': {
-                    'id': base_prompt.id if base_prompt else None,
-                    'name': base_prompt.name if base_prompt else 'Unknown Prompt'
+            "prompt": prompt_content,
+            "metadata": {
+                "base_prompt": {
+                    "id": base_prompt.id if base_prompt else None,
+                    "name": base_prompt.name if base_prompt else "Unknown Prompt",
                 },
-                'modules': added_modules,
-                'email_sample_count': len(analysis_data)
-            }
+                "modules": added_modules,
+                "email_sample_count": len(analysis_data),
+            },
         }
 
         return result

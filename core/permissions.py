@@ -1,4 +1,10 @@
+"""
+Permission classes for the core API.
+"""
+
 from rest_framework import permissions
+from django.core.exceptions import ObjectDoesNotExist
+from .models import UserProfile, WorkspaceShare
 
 
 class RoleBasedPermission(permissions.BasePermission):
@@ -16,9 +22,7 @@ class RoleBasedPermission(permissions.BasePermission):
         # Get user profile. If it doesn't exist, create it with default role (normal)
         try:
             user_profile = request.user.profile
-        except:
-            from core.models import UserProfile
-
+        except ObjectDoesNotExist:
             user_profile = UserProfile.objects.create(
                 user=request.user, role=UserProfile.NORMAL
             )
@@ -50,6 +54,73 @@ class NormalUserPermission(RoleBasedPermission):
     minimum_role = "normal"
 
 
+class WorkspacePermission(permissions.BasePermission):
+    """
+    Custom permission for Workspace operations.
+
+    Rules:
+    - Users can only access their own workspaces or workspaces shared with them
+    - Admin users can see all workspaces
+    """
+
+    def has_permission(self, request, view):
+        # Check if user is authenticated
+        return request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        # Admin can access any workspace
+        try:
+            user_profile = request.user.profile
+            if user_profile.is_admin:
+                return True
+        except ObjectDoesNotExist:
+            pass
+
+        # Check if the object is a Workspace
+        if hasattr(obj, "user"):
+            # If user owns the workspace
+            if obj.user == request.user:
+                return True
+
+            # Check if workspace is shared with user
+            is_shared = WorkspaceShare.objects.filter(
+                workspace=obj, shared_with=request.user
+            ).exists()
+
+            # For write operations, check if user has write permission
+            if is_shared and request.method in ["GET", "HEAD", "OPTIONS"]:
+                return True
+            elif is_shared and request.method in ["PUT", "PATCH", "DELETE", "POST"]:
+                return WorkspaceShare.objects.filter(
+                    workspace=obj,
+                    shared_with=request.user,
+                    permission=WorkspaceShare.WRITE,
+                ).exists()
+
+        # Check if the object belongs to a workspace (EmailFile, RuleGeneration)
+        elif hasattr(obj, "workspace"):
+            # If user owns the workspace
+            if obj.workspace.user == request.user:
+                return True
+
+            # Check if workspace is shared with user
+            is_shared = WorkspaceShare.objects.filter(
+                workspace=obj.workspace, shared_with=request.user
+            ).exists()
+
+            # For write operations, check if user has write permission
+            if is_shared and request.method in ["GET", "HEAD", "OPTIONS"]:
+                return True
+            elif is_shared and request.method in ["PUT", "PATCH", "DELETE", "POST"]:
+                return WorkspaceShare.objects.filter(
+                    workspace=obj.workspace,
+                    shared_with=request.user,
+                    permission=WorkspaceShare.WRITE,
+                ).exists()
+
+        return False
+
+
 class PromptTemplatePermission(permissions.BasePermission):
     """
     Custom permission for PromptTemplate operations.
@@ -58,7 +129,7 @@ class PromptTemplatePermission(permissions.BasePermission):
     - Anyone can view prompts visible to them
     - Only admins can delete default prompts and modules
     - Power users can create global prompts
-    - Normal users can only create user_workspaces or current_workspace prompts
+    - Normal users can only create user_workspaces or workspace prompts
     - Users can only delete prompts they created (except admins)
     """
 
@@ -74,8 +145,8 @@ class PromptTemplatePermission(permissions.BasePermission):
         # For actions that modify data, check user role and permissions
         try:
             user_profile = request.user.profile
-        except:
-            from core.models import UserProfile
+        except ObjectDoesNotExist:
+            from .models import UserProfile
 
             user_profile = UserProfile.objects.create(
                 user=request.user, role=UserProfile.NORMAL
@@ -83,11 +154,9 @@ class PromptTemplatePermission(permissions.BasePermission):
 
         if view.action == "create":
             # Check if normal user is trying to create a global template
-            from core.models import PromptTemplate
+            from .models import PromptTemplate
 
-            visibility = request.data.get(
-                "visibility", PromptTemplate.CURRENT_WORKSPACE
-            )
+            visibility = request.data.get("visibility", PromptTemplate.WORKSPACE)
             if visibility == PromptTemplate.GLOBAL and not user_profile.is_power_user:
                 return False
             return True
@@ -108,8 +177,8 @@ class PromptTemplatePermission(permissions.BasePermission):
         # Get user profile
         try:
             user_profile = request.user.profile
-        except:
-            from core.models import UserProfile
+        except ObjectDoesNotExist:
+            from .models import UserProfile
 
             user_profile = UserProfile.objects.create(
                 user=request.user, role=UserProfile.NORMAL
@@ -133,7 +202,7 @@ class PromptTemplatePermission(permissions.BasePermission):
         if view.action in ["update", "partial_update"]:
             # Check if trying to change visibility to global
             if "visibility" in request.data:
-                from core.models import PromptTemplate
+                from .models import PromptTemplate
 
                 if (
                     request.data["visibility"] == PromptTemplate.GLOBAL
@@ -147,29 +216,3 @@ class PromptTemplatePermission(permissions.BasePermission):
 
         # Default to allow
         return True
-
-
-class WorkspacePermission(permissions.BasePermission):
-    """
-    Custom permission for Workspace operations.
-
-    Rules:
-    - Users can only access their own workspaces
-    - Admin users can see all workspaces
-    """
-
-    def has_permission(self, request, view):
-        # Check if user is authenticated
-        return request.user.is_authenticated
-
-    def has_object_permission(self, request, view, obj):
-        # Admin can access any workspace
-        try:
-            user_profile = request.user.profile
-            if user_profile.is_admin:
-                return True
-        except:
-            pass
-
-        # Users can only access their own workspaces
-        return obj.user == request.user

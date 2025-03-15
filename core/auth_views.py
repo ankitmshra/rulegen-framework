@@ -1,4 +1,4 @@
-# core/auth_views.py - Update existing file
+"""Authentication views for the core API."""
 
 from django.contrib.auth import authenticate, login, logout
 from rest_framework import status
@@ -11,6 +11,7 @@ from .models import UserProfile
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
+    """Handle user login and return user data."""
     username = request.data.get("username")
     password = request.data.get("password")
 
@@ -69,6 +70,7 @@ def logout_view(request):
 
 @api_view(["GET"])
 def current_user(request):
+    """Return current user details if authenticated."""
     if not request.user.is_authenticated:
         return Response({"authenticated": False}, status=status.HTTP_401_UNAUTHORIZED)
 

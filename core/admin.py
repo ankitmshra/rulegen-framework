@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import EmailFile, RuleGeneration, PromptTemplate, UserProfile
+from .models import (
+    UserProfile,
+    Workspace,
+    EmailFile,
+    RuleGeneration,
+    PromptTemplate,
+    WorkspaceShare,
+)
 
 
 class UserProfileInline(admin.StackedInline):
@@ -39,32 +46,47 @@ admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 
 
+@admin.register(Workspace)
+class WorkspaceAdmin(admin.ModelAdmin):
+    """Admin configuration for the Workspace model."""
+
+    list_display = ("name", "user", "created_at")
+    list_filter = ("created_at", "user")
+    search_fields = ("name", "user__username")
+    readonly_fields = ("created_at",)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        # Help text for name field
+        if "name" in form.base_fields:
+            form.base_fields["name"].help_text = "Maximum 25 characters"
+        return form
+
+
 @admin.register(EmailFile)
 class EmailFileAdmin(admin.ModelAdmin):
     """Admin configuration for the EmailFile model."""
 
-    list_display = ("original_filename", "user", "uploaded_at", "processed")
-    list_filter = ("processed", "uploaded_at", "user")
-    search_fields = ("original_filename", "user__username")
-    readonly_fields = ("user", "uploaded_at")
+    list_display = (
+        "original_filename",
+        "workspace",
+        "uploaded_by",
+        "uploaded_at",
+        "processed",
+    )
+    list_filter = ("processed", "uploaded_at", "uploaded_by", "workspace")
+    search_fields = ("original_filename", "uploaded_by__username", "workspace__name")
+    readonly_fields = ("uploaded_by", "uploaded_at")
 
 
 @admin.register(RuleGeneration)
 class RuleGenerationAdmin(admin.ModelAdmin):
     """Admin configuration for the RuleGeneration model."""
 
-    list_display = ("id", "workspace_name", "user", "created_at", "is_complete")
-    list_filter = ("is_complete", "created_at", "user")
-    search_fields = ("workspace_name", "user__username")
-    readonly_fields = ("prompt", "rule", "user")
-    filter_horizontal = ("email_files",)
-
-    def get_form(self, request, obj=None, **kwargs):
-        form = super().get_form(request, obj, **kwargs)
-        # Help text for workspace_name field
-        if "workspace_name" in form.base_fields:
-            form.base_fields["workspace_name"].help_text = "Maximum 25 characters"
-        return form
+    list_display = ("id", "workspace", "created_by", "created_at", "is_complete")
+    list_filter = ("is_complete", "created_at", "created_by", "workspace")
+    search_fields = ("workspace__name", "created_by__username")
+    readonly_fields = ("prompt", "rule", "created_by", "created_at")
 
 
 @admin.register(PromptTemplate)
@@ -113,3 +135,13 @@ class PromptTemplateAdmin(admin.ModelAdmin):
         if not change and not obj.created_by:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+
+@admin.register(WorkspaceShare)
+class WorkspaceShareAdmin(admin.ModelAdmin):
+    """Admin configuration for the WorkspaceShare model."""
+
+    list_display = ("workspace", "shared_with", "permission", "created_at")
+    list_filter = ("permission", "created_at", "workspace__user")
+    search_fields = ("workspace__name", "shared_with__username")
+    readonly_fields = ("created_at",)

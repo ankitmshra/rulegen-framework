@@ -3,16 +3,23 @@ Views for core API endpoints.
 """
 
 from django.contrib.auth.models import User
-from django.db.models import Count, Max, Q, F, Value, BooleanField
+from django.db.models import Count, Max, Q, Value, BooleanField
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
+import os
+import threading
+from django.conf import settings
+
 from .models import (
     EmailFile,
     RuleGeneration,
     PromptTemplate,
     WorkspaceShare,
+    Workspace,
 )
 from .serializers import (
     EmailFileSerializer,
@@ -20,6 +27,7 @@ from .serializers import (
     PromptTemplateSerializer,
     UserSerializer,
     WorkspaceShareSerializer,
+    WorkspaceSerializer,
 )
 from .services import SpamGenieService
 from .prompt_manager import PromptManager
@@ -29,9 +37,6 @@ from .permissions import (
     PromptTemplatePermission,
     WorkspacePermission,
 )
-import threading
-import os
-from django.conf import settings
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -76,6 +81,118 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(users)
 
 
+class WorkspaceViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing workspaces."""
+
+    permission_classes = [NormalUserPermission, WorkspacePermission]
+    serializer_class = WorkspaceSerializer
+
+    def get_queryset(self):
+        """Return workspaces based on user permissions."""
+        user = self.request.user
+
+        # Admin can see all workspaces if 'all' parameter is provided
+        if self.request.query_params.get("all", "").lower() == "true":
+            try:
+                user_profile = self.request.user.profile
+                if user_profile.is_admin:
+                    return Workspace.objects.all().order_by("-created_at")
+            except ObjectDoesNotExist:
+                pass
+
+        # Get workspaces this user has access to through sharing
+        shared_workspaces = WorkspaceShare.objects.filter(shared_with=user).values_list(
+            "workspace_id", flat=True
+        )
+
+        # Return user's own workspaces OR shared ones
+        return Workspace.objects.filter(
+            Q(user=user) | Q(id__in=shared_workspaces)
+        ).order_by("-created_at")
+
+    def perform_create(self, serializer):
+        """Set the user when creating a workspace."""
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        """Get a summary of all workspaces with their latest rule generation."""
+        workspaces = self.get_queryset()
+
+        # Get user's own workspaces
+        own_workspaces = workspaces.filter(user=request.user).annotate(
+            rule_count=Count("rule_generations"),
+            latest_rule_id=Max("rule_generations__id"),
+            latest_date=Max("rule_generations__created_at"),
+            is_owner=Value(True, output_field=BooleanField()),
+        )
+
+        # Add share information to each owned workspace
+        own_workspaces_with_shares = []
+        for workspace in own_workspaces:
+            shares = WorkspaceShare.objects.filter(workspace=workspace).select_related(
+                "shared_with"
+            )
+
+            shares_data = []
+            for share in shares:
+                shares_data.append(
+                    {
+                        "user_id": share.shared_with.id,
+                        "username": share.shared_with.username,
+                        "email": share.shared_with.email,
+                        "permission": share.permission,
+                    }
+                )
+
+            workspace_data = WorkspaceSerializer(
+                workspace, context={"request": request}
+            ).data
+            workspace_data["rule_count"] = workspace.rule_count
+            workspace_data["latest_rule_id"] = workspace.latest_rule_id
+            workspace_data["latest_date"] = workspace.latest_date
+            workspace_data["is_owner"] = workspace.is_owner
+            workspace_data["shares"] = shares_data
+
+            own_workspaces_with_shares.append(workspace_data)
+
+        # Get workspaces shared with the user
+        shared_workspaces = workspaces.filter(~Q(user=request.user)).annotate(
+            rule_count=Count("rule_generations"),
+            latest_rule_id=Max("rule_generations__id"),
+            latest_date=Max("rule_generations__created_at"),
+            is_owner=Value(False, output_field=BooleanField()),
+        )
+
+        shared_workspaces_data = []
+        for workspace in shared_workspaces:
+            # Get the sharing permission
+            share = WorkspaceShare.objects.filter(
+                workspace=workspace, shared_with=request.user
+            ).first()
+
+            workspace_data = WorkspaceSerializer(
+                workspace, context={"request": request}
+            ).data
+            workspace_data["rule_count"] = workspace.rule_count
+            workspace_data["latest_rule_id"] = workspace.latest_rule_id
+            workspace_data["latest_date"] = workspace.latest_date
+            workspace_data["is_owner"] = workspace.is_owner
+            workspace_data["permission"] = share.permission if share else "read"
+
+            shared_workspaces_data.append(workspace_data)
+
+        # Combine own and shared workspaces
+        all_workspaces = own_workspaces_with_shares + shared_workspaces_data
+
+        # Sort by latest date (handle None values)
+        all_workspaces = sorted(
+            all_workspaces, key=lambda x: x.get("latest_date") or "", reverse=True
+        )
+
+        return Response(all_workspaces)
+
+
 class EmailFileViewSet(viewsets.ModelViewSet):
     """ViewSet for managing email files."""
 
@@ -84,8 +201,7 @@ class EmailFileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """
-        Return only the email files owned by the authenticated user,
-        filtered by workspace if specified.
+        Return email files based on user permissions.
         """
         # Admin can see all files if 'all' parameter is provided
         if self.request.query_params.get("all", "").lower() == "true":
@@ -93,66 +209,109 @@ class EmailFileViewSet(viewsets.ModelViewSet):
                 user_profile = self.request.user.profile
                 if user_profile.is_admin:
                     return EmailFile.objects.all().order_by("-uploaded_at")
-            except:
+            except ObjectDoesNotExist:
                 pass
 
-        queryset = EmailFile.objects.filter(user=self.request.user)
+        # Get workspaces this user has access to
+        workspaces = Workspace.objects.filter(
+            Q(user=self.request.user)  # User's own workspaces
+            | Q(shares__shared_with=self.request.user)  # Shared workspaces
+        )
 
-        # Filter by workspace if provided
+        # Filter by specific workspace ID if provided
         workspace_id = self.request.query_params.get("workspace", None)
         if workspace_id:
             try:
                 workspace_id = int(workspace_id)
-                # Get email files associated with this rule generation
-                rule_gen = RuleGeneration.objects.get(
-                    id=workspace_id, user=self.request.user
-                )
-                return rule_gen.email_files.all()
-            except (ValueError, RuleGeneration.DoesNotExist):
-                # If invalid workspace ID or workspace doesn't exist, return empty queryset
+                # Check if user has access to this specific workspace
+                workspace = workspaces.filter(id=workspace_id).first()
+                if workspace:
+                    return EmailFile.objects.filter(workspace=workspace).order_by(
+                        "-uploaded_at"
+                    )
+                else:
+                    # If user doesn't have access, return empty queryset
+                    return EmailFile.objects.none()
+            except (ValueError, Workspace.DoesNotExist):
+                # If invalid workspace ID, return empty queryset
                 return EmailFile.objects.none()
 
-        return queryset.order_by("-uploaded_at")
+        # Return all email files from workspaces the user has access to
+        return EmailFile.objects.filter(workspace__in=workspaces).order_by(
+            "-uploaded_at"
+        )
 
     def perform_create(self, serializer):
-        """Set the original filename and user when creating an email file."""
+        """Set the uploaded_by field and create the upload directory if needed."""
         # Create the upload directory if it doesn't exist
         upload_dir = os.path.join(settings.MEDIA_ROOT, "uploads")
         os.makedirs(upload_dir, exist_ok=True)
 
         file_obj = self.request.FILES.get("file")
-        workspace_id = self.request.data.get("workspace_id")
+        workspace_id = self.request.data.get("workspace")
 
         if file_obj:
             if not file_obj.name.lower().endswith(".eml"):
-                from rest_framework.exceptions import ValidationError
-
                 raise ValidationError({"file": "Only .eml files are supported."})
 
-            email_file = serializer.save(
-                original_filename=file_obj.name, user=self.request.user
-            )
+            try:
+                # Check if the user has access to this workspace
+                workspace = Workspace.objects.get(id=workspace_id)
 
-            # Associate with workspace if provided
-            if workspace_id:
-                try:
-                    rule_gen = RuleGeneration.objects.get(
-                        id=workspace_id, user=self.request.user
+                # Check if user owns the workspace or has write permission
+                has_permission = False
+                if workspace.user == self.request.user:
+                    has_permission = True
+                else:
+                    # Check if user has write permission for shared workspace
+                    has_permission = WorkspaceShare.objects.filter(
+                        workspace=workspace,
+                        shared_with=self.request.user,
+                        permission=WorkspaceShare.WRITE,
+                    ).exists()
+
+                if not has_permission:
+                    raise PermissionDenied(
+                        "You don't have permission to upload files to this workspace."
                     )
-                    rule_gen.email_files.add(email_file)
-                except (ValueError, RuleGeneration.DoesNotExist):
-                    # Ignore if workspace doesn't exist
-                    pass
-        else:
-            from rest_framework.exceptions import ValidationError
 
+                # Save the EmailFile
+                serializer.save(
+                    original_filename=file_obj.name,
+                    uploaded_by=self.request.user,
+                    workspace=workspace,
+                )
+            except Workspace.DoesNotExist:
+                raise ValidationError({"workspace": "Workspace not found."})
+        else:
             raise ValidationError({"file": "No file was submitted."})
 
     @action(detail=False, methods=["get"])
     def available_headers(self, request):
         """Get all available headers from the processed emails."""
-        email_files = self.get_queryset()
-        if not email_files:
+        # Get workspace if specified
+        workspace_id = request.query_params.get("workspace", None)
+        email_files = None
+
+        if workspace_id:
+            try:
+                workspace = Workspace.objects.get(id=workspace_id)
+                # Check permission
+                if (
+                    workspace.user == request.user
+                    or WorkspaceShare.objects.filter(
+                        workspace=workspace, shared_with=request.user
+                    ).exists()
+                ):
+                    email_files = EmailFile.objects.filter(workspace=workspace)
+            except Workspace.DoesNotExist:
+                return Response(
+                    {"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            email_files = self.get_queryset()
+
+        if not email_files or email_files.count() == 0:
             return Response({}, status=status.HTTP_200_OK)
 
         try:
@@ -178,7 +337,7 @@ class PromptTemplateViewSet(viewsets.ModelViewSet):
         - Normal users see:
           - All global templates
           - Templates they created
-          - Templates for their workspaces
+          - Templates for workspaces they can access
         """
         user = self.request.user
 
@@ -186,19 +345,29 @@ class PromptTemplateViewSet(viewsets.ModelViewSet):
         try:
             user_profile = user.profile
             is_power_user = user_profile.is_power_user
-        except:
+        except ObjectDoesNotExist:
             is_power_user = False
 
         # If power user or admin, show all templates
         if is_power_user:
             queryset = PromptTemplate.objects.all()
         else:
-            # For normal users, show global templates + own templates + workspace templates
+            # Get workspaces the user has access to
+            accessible_workspaces = Workspace.objects.filter(
+                Q(user=user)  # User's own workspaces
+                | Q(shares__shared_with=user)  # Shared workspaces
+            )
+
+            # For normal users,
+            # show global templates + own templates + workspace templates they can access
             queryset = PromptTemplate.objects.filter(
                 Q(visibility=PromptTemplate.GLOBAL)
                 | Q(created_by=user)
                 | Q(visibility=PromptTemplate.USER_WORKSPACES, created_by=user)
-                | Q(workspace__user=user, visibility=PromptTemplate.CURRENT_WORKSPACE)
+                | Q(
+                    visibility=PromptTemplate.WORKSPACE,
+                    workspace__in=accessible_workspaces,
+                )
             ).distinct()
 
         # Filter by module type if specified
@@ -263,78 +432,60 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
         """Return rule generations based on user permissions."""
         user = self.request.user
 
-        # Get workspaces this user has access to through sharing
-        shared_workspaces = WorkspaceShare.objects.filter(shared_with=user).values_list(
-            "workspace_name", "owner_id"
+        # Get workspaces this user has access to
+        accessible_workspaces = Workspace.objects.filter(
+            Q(user=user)  # User's own workspaces
+            | Q(shares__shared_with=user)  # Shared workspaces
         )
 
-        # Create a list of Q objects for each shared workspace
-        shared_filters = [
-            Q(workspace_name=name, user_id=owner_id)
-            for name, owner_id in shared_workspaces
-        ]
-
-        # Combine all filters with OR
-        if shared_filters:
-            shared_q = shared_filters[0]
-            for q in shared_filters[1:]:
-                shared_q |= q
-
-            # Return user's own rule generations OR shared ones
-            return RuleGeneration.objects.filter(Q(user=user) | shared_q).order_by(
-                "-created_at"
-            )
-        else:
-            # Just return user's own rule generations
-            return RuleGeneration.objects.filter(user=user).order_by("-created_at")
+        # Get rule generations for these workspaces
+        return RuleGeneration.objects.filter(
+            workspace__in=accessible_workspaces
+        ).order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
         """Create a new rule generation request."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        rule_generation = serializer.save(user=request.user)
 
-        # Start a background thread to process the rule generation
-        threading.Thread(
-            target=SpamGenieService.process_rule_generation, args=(rule_generation.id,)
-        ).start()
-
-        headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers
-        )
-
-    def retrieve(self, request, *args, **kwargs):
-        """Check permissions for shared workspaces when retrieving a specific rule generation."""
-        instance = self.get_object()
-
-        # If it's the user's own rule generation, proceed normally
-        if instance.user == request.user:
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
-
-        # Check if user has access through sharing
+        # Verify user has access to the workspace
+        workspace_id = serializer.validated_data.get("workspace").id
         try:
-            # Get sharing record
-            share = WorkspaceShare.objects.get(
-                workspace_name=instance.workspace_name,
-                owner=instance.user,
-                shared_with=request.user,
+            workspace = Workspace.objects.get(id=workspace_id)
+
+            # Check permission (must be owner or have write permission)
+            if workspace.user != request.user:
+                share = WorkspaceShare.objects.filter(
+                    workspace=workspace,
+                    shared_with=request.user,
+                    permission=WorkspaceShare.WRITE,
+                ).first()
+
+                if not share:
+                    return Response(
+                        {
+                            "error": "You don't have permission to create rules for this workspace"
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+            # Create the rule generation
+            rule_generation = serializer.save(created_by=request.user)
+
+            # Start a background thread to process the rule generation
+            threading.Thread(
+                target=SpamGenieService.process_rule_generation,
+                args=(rule_generation.id,),
+            ).start()
+
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data, status=status.HTTP_201_CREATED, headers=headers
             )
 
-            # Add permission info to the serialized data
-            serializer = self.get_serializer(instance)
-            data = serializer.data
-            data["shared_info"] = {
-                "permission": share.permission,
-                "owner_username": instance.user.username,
-            }
-            return Response(data)
-
-        except WorkspaceShare.DoesNotExist:
+        except Workspace.DoesNotExist:
             return Response(
-                {"error": "You do not have permission to access this rule generation"},
-                status=status.HTTP_403_FORBIDDEN,
+                {"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND
             )
 
     @action(detail=True, methods=["get"])
@@ -344,7 +495,7 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "id": rule_generation.id,
-                "workspace_name": rule_generation.workspace_name,
+                "workspace_name": rule_generation.workspace.name,
                 "is_complete": rule_generation.is_complete,
                 "rule": rule_generation.rule if rule_generation.is_complete else None,
             },
@@ -352,145 +503,123 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
         )
 
     @action(detail=False, methods=["get"])
-    def workspaces(self, request):
-        """Get all workspaces the user has access to."""
-        user = request.user
-
-        # Get user's own workspaces
-        own_workspaces = (
-            RuleGeneration.objects.filter(user=user)
-            .values("workspace_name")
-            .annotate(
-                count=Count("id"),
-                latest_id=Max("id"),
-                latest_date=Max("created_at"),
-                user_id=F("user__id"),
-                is_owner=Value(True, output_field=BooleanField()),
-            )
-            .order_by("-latest_date")
-        )
-
-        # Add share information to each owned workspace
-        own_workspaces_with_shares = []
-        for workspace in own_workspaces:
-            workspace_name = workspace["workspace_name"]
-            shares = WorkspaceShare.objects.filter(
-                workspace_name=workspace_name, owner=request.user
-            ).select_related("shared_with")
-
-            shares_data = []
-            for share in shares:
-                shares_data.append(
-                    {
-                        "user_id": share.shared_with.id,
-                        "username": share.shared_with.username,
-                        "email": share.shared_with.email,
-                        "permission": share.permission,
-                    }
-                )
-
-            workspace_with_shares = dict(workspace)
-            workspace_with_shares["shares"] = shares_data
-            own_workspaces_with_shares.append(workspace_with_shares)
-
-        include_shared = request.query_params.get("all", "").lower() == "true"
-
-        if include_shared:
-            # Get workspaces shared with the user
-            shared_workspaces_data = []
-            shared_relations = WorkspaceShare.objects.filter(
-                shared_with=user
-            ).select_related("owner")
-
-            for share in shared_relations:
-                # For each share, get the latest rule generation
-                latest_rule_gen = (
-                    RuleGeneration.objects.filter(
-                        workspace_name=share.workspace_name, user=share.owner
-                    )
-                    .order_by("-created_at")
-                    .first()
-                )
-
-                if latest_rule_gen:
-                    shared_workspaces_data.append(
-                        {
-                            "workspace_name": share.workspace_name,
-                            "count": RuleGeneration.objects.filter(
-                                workspace_name=share.workspace_name, user=share.owner
-                            ).count(),
-                            "latest_id": latest_rule_gen.id,
-                            "latest_date": latest_rule_gen.created_at,
-                            "user_id": share.owner.id,
-                            "user__username": share.owner.username,
-                            "is_owner": False,
-                            "permission": share.permission,
-                        }
-                    )
-
-            # Combine own and shared workspaces
-            all_workspaces = own_workspaces_with_shares + shared_workspaces_data
-            # Sort by latest date
-            all_workspaces = sorted(
-                all_workspaces, key=lambda x: x["latest_date"], reverse=True
+    def base_prompts(self, request):
+        """Get all available base prompts."""
+        try:
+            # Using PromptManager to get base prompts
+            base_prompts = PromptManager.get_base_prompts()
+            serializer = PromptTemplateSerializer(base_prompts, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-            return Response(all_workspaces, status=status.HTTP_200_OK)
-
-        # If not including shared, just return own workspaces
-        return Response(own_workspaces_with_shares, status=status.HTTP_200_OK)
-
-    @action(detail=False, methods=["get"])
-    def shared_workspaces(self, request):
-        """Get all workspaces shared with the current user."""
-        shared = WorkspaceShare.objects.filter(shared_with=request.user)
-
-        # Group by workspace_name and owner
-        workspaces = []
-        for share in shared:
-            # Get the most recent rule generation for this workspace
-            latest_rule_gen = (
-                RuleGeneration.objects.filter(
-                    workspace_name=share.workspace_name, user=share.owner
-                )
-                .order_by("-created_at")
-                .first()
+    @action(detail=False, methods=["post"])
+    def generate_default_prompt(self, request):
+        """Generate a default prompt without saving."""
+        # Get the workspace
+        workspace_id = request.data.get("workspace_id")
+        if not workspace_id:
+            return Response(
+                {"error": "Workspace ID is required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-            if latest_rule_gen:
-                workspaces.append(
-                    {
-                        "workspace_name": share.workspace_name,
-                        "owner_id": share.owner.id,
-                        "owner_username": share.owner.username,
-                        "permission": share.permission,
-                        "count": RuleGeneration.objects.filter(
-                            workspace_name=share.workspace_name, user=share.owner
-                        ).count(),
-                        "latest_id": latest_rule_gen.id,
-                        "latest_date": latest_rule_gen.created_at,
-                    }
+        try:
+            workspace = Workspace.objects.get(id=workspace_id)
+            # Check permission
+            if (
+                workspace.user != request.user
+                and not WorkspaceShare.objects.filter(
+                    workspace=workspace, shared_with=request.user
+                ).exists()
+            ):
+                return Response(
+                    {"error": "You don't have permission to access this workspace"},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
+        except Workspace.DoesNotExist:
+            return Response(
+                {"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
-        return Response(workspaces, status=status.HTTP_200_OK)
+        try:
+            # Get email files for this workspace
+            email_files = EmailFile.objects.filter(workspace=workspace)
+
+            # Create a temporary RuleGeneration object
+            temp_rule_generation = RuleGeneration(
+                workspace=workspace,
+                created_by=request.user,
+                prompt_modules=request.data.get("prompt_modules", []),
+                base_prompt_id=request.data.get("base_prompt_id"),
+            )
+
+            # Save to get an ID
+            temp_rule_generation.save()
+
+            # Update workspace's selected_headers if provided
+            selected_headers = request.data.get("selected_headers")
+            if selected_headers:
+                workspace.selected_headers = selected_headers
+                workspace.save()
+
+            # Generate the prompt
+            prompt = SpamGenieService.generate_prompt(temp_rule_generation, email_files)
+
+            # Get metadata
+            metadata = temp_rule_generation.prompt_metadata
+
+            # Delete the temporary object
+            temp_rule_generation.delete()
+
+            return Response(
+                {"prompt": prompt, "metadata": metadata}, status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            if hasattr(e, "__class__") and e.__class__.__name__ != "Exception":
+                # Use the specific exception name in the error message
+                error_type = e.__class__.__name__
+                error_message = f"{error_type}: {str(e)}"
+            else:
+                error_message = str(e)
+
+            return Response(
+                {"error": error_message}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WorkspaceShareViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing workspace sharing."""
+
+    permission_classes = [NormalUserPermission]
+    serializer_class = WorkspaceShareSerializer
+
+    def get_queryset(self):
+        """Return workspace shares based on user permissions."""
+        # Users can only see shares for workspaces they own
+        return WorkspaceShare.objects.filter(
+            workspace__user=self.request.user
+        ).order_by("workspace__name", "shared_with__username")
 
     @action(detail=False, methods=["post"])
     def share_workspace(self, request):
         """Share a workspace with another user."""
-        workspace_name = request.data.get("workspace_name")
+        workspace_id = request.data.get("workspace_id")
         username_or_email = request.data.get("username_or_email")
         permission = request.data.get("permission", WorkspaceShare.READ)
 
-        if not workspace_name or not username_or_email:
+        if not workspace_id or not username_or_email:
             return Response(
-                {"error": "Both workspace_name and username_or_email are required"},
+                {"error": "Both workspace_id and username_or_email are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Verify the workspace exists for this user
-        if not RuleGeneration.objects.filter(
-            workspace_name=workspace_name, user=request.user
-        ).exists():
+        # Verify the workspace exists and user owns it
+        try:
+            workspace = Workspace.objects.get(id=workspace_id, user=request.user)
+        except Workspace.DoesNotExist:
             return Response(
                 {
                     "error": "Workspace not found or you do not have permission to share it"
@@ -520,95 +649,50 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
 
         # Create or update the share
         share, created = WorkspaceShare.objects.update_or_create(
-            workspace_name=workspace_name,
-            owner=request.user,
+            workspace=workspace,
             shared_with=shared_with,
             defaults={"permission": permission},
         )
 
-        serializer = WorkspaceShareSerializer(share)
+        serializer = self.get_serializer(share)
         return Response(
             serializer.data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
     @action(detail=False, methods=["delete"])
-    def unshare_workspace(self, request):
+    def remove_share(self, request):
         """Remove sharing for a workspace."""
-        workspace_name = request.data.get("workspace_name")
+        workspace_id = request.data.get("workspace_id")
         user_id = request.data.get("user_id")
 
-        if not workspace_name or not user_id:
+        if not workspace_id or not user_id:
             return Response(
-                {"error": "Both workspace_name and user_id are required"},
+                {"error": "Both workspace_id and user_id are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
+            # Verify the workspace exists and user owns it
+            workspace = Workspace.objects.get(id=workspace_id, user=request.user)
+
+            # Find and delete the share
             share = WorkspaceShare.objects.get(
-                workspace_name=workspace_name,
-                owner=request.user,
-                shared_with_id=user_id,
+                workspace=workspace, shared_with_id=user_id
             )
             share.delete()
+
             return Response(status=status.HTTP_204_NO_CONTENT)
+        except Workspace.DoesNotExist:
+            return Response(
+                {
+                    "error": (
+                        "Workspace not found or you do not have permission to manage its shares"
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except WorkspaceShare.DoesNotExist:
             return Response(
                 {"error": "Share not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-    @action(detail=False, methods=["get"])
-    def base_prompts(self, request):
-        """Get all available base prompts."""
-        try:
-            # Using PromptManager to get base prompts
-            base_prompts = PromptManager.get_base_prompts()
-            serializer = PromptTemplateSerializer(base_prompts, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=["post"])
-    def generate_default_prompt(self, request):
-        """Generate a default prompt without saving."""
-        try:
-            # Create a temporary RuleGeneration object
-            temp_rule_generation = RuleGeneration(
-                user=request.user,
-                selected_headers=request.data.get("selected_headers", []),
-                prompt_modules=request.data.get("prompt_modules", []),
-                workspace_name=request.data.get(
-                    "workspace_name", "Temporary Workspace"
-                ),
-                base_prompt_id=request.data.get("base_prompt_id"),
-            )
-
-            # Add email files to the temporary object
-            email_file_ids = request.data.get("email_file_ids", [])
-            # Filter to ensure we only include files owned by this user
-            email_files = EmailFile.objects.filter(
-                id__in=email_file_ids, user=request.user
-            )
-
-            # We need to save to use M2M relationship
-            temp_rule_generation.save()
-            temp_rule_generation.email_files.set(email_files)
-
-            # Generate the prompt
-            prompt = SpamGenieService.generate_prompt(temp_rule_generation)
-
-            # Get metadata
-            metadata = temp_rule_generation.prompt_metadata
-
-            # Delete the temporary object
-            temp_rule_generation.delete()
-
-            return Response(
-                {"prompt": prompt, "metadata": metadata}, status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

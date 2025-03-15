@@ -1,4 +1,6 @@
-# core/management/commands/init_prompt_templates.py
+"""
+Management command to initialize default prompt templates.
+"""
 
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
@@ -6,6 +8,8 @@ from core.models import PromptTemplate, UserProfile
 
 
 class Command(BaseCommand):
+    """Initialize default prompt templates."""
+
     help = "Initialize default prompt templates"
 
     def add_arguments(self, parser):

@@ -1,10 +1,16 @@
+"""
+Serializers for the core API.
+"""
+
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist
 from .models import (
+    UserProfile,
+    Workspace,
     EmailFile,
     RuleGeneration,
     PromptTemplate,
-    UserProfile,
     WorkspaceShare,
 )
 
@@ -91,10 +97,33 @@ class UserSerializer(serializers.ModelSerializer):
         return instance
 
 
+class WorkspaceSerializer(serializers.ModelSerializer):
+    """Serializer for the Workspace model."""
+
+    owner_username = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = Workspace
+        fields = [
+            "id",
+            "name",
+            "user",
+            "owner_username",
+            "created_at",
+            "description",
+            "selected_headers",
+        ]
+        read_only_fields = ["created_at"]
+        extra_kwargs = {"user": {"write_only": True}}
+
+
 class EmailFileSerializer(serializers.ModelSerializer):
     """Serializer for the EmailFile model."""
 
     file_url = serializers.SerializerMethodField()
+    uploader_username = serializers.CharField(
+        source="uploaded_by.username", read_only=True
+    )
 
     class Meta:
         model = EmailFile
@@ -105,8 +134,16 @@ class EmailFileSerializer(serializers.ModelSerializer):
             "original_filename",
             "uploaded_at",
             "processed",
+            "workspace",
+            "uploaded_by",
+            "uploader_username",
         ]
-        read_only_fields = ["uploaded_at", "processed", "original_filename", "user"]
+        read_only_fields = [
+            "uploaded_at",
+            "processed",
+            "original_filename",
+            "uploaded_by",
+        ]
         extra_kwargs = {"file": {"required": True, "allow_empty_file": False}}
 
     def get_file_url(self, obj):
@@ -149,14 +186,14 @@ class PromptTemplateSerializer(serializers.ModelSerializer):
 
         # Enforce visibility permissions based on user role
         user = self.context["request"].user
-        visibility = validated_data.get("visibility", PromptTemplate.CURRENT_WORKSPACE)
+        visibility = validated_data.get("visibility", PromptTemplate.WORKSPACE)
 
         try:
             user_profile = user.profile
             # If normal user tries to create global template, override to user_workspaces
             if visibility == PromptTemplate.GLOBAL and not user_profile.is_power_user:
                 validated_data["visibility"] = PromptTemplate.USER_WORKSPACES
-        except:
+        except ObjectDoesNotExist:
             # Default to workspace-level if profile doesn't exist
             if visibility == PromptTemplate.GLOBAL:
                 validated_data["visibility"] = PromptTemplate.USER_WORKSPACES
@@ -167,104 +204,71 @@ class PromptTemplateSerializer(serializers.ModelSerializer):
 class RuleGenerationSerializer(serializers.ModelSerializer):
     """Serializer for the RuleGeneration model."""
 
-    email_files = EmailFileSerializer(many=True, read_only=True)
-    email_file_ids = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True
+    creator_username = serializers.CharField(
+        source="created_by.username", read_only=True
     )
-    custom_prompt = serializers.CharField(required=False, write_only=True)
-    prompt_modules = serializers.ListField(
-        child=serializers.CharField(), required=False
-    )
-    base_prompt_id = serializers.IntegerField(required=False, allow_null=True)
-    username = serializers.CharField(source="user.username", read_only=True)
+    workspace_name = serializers.CharField(source="workspace.name", read_only=True)
+    email_files = serializers.SerializerMethodField()
 
     class Meta:
         model = RuleGeneration
         fields = [
             "id",
+            "workspace",
             "workspace_name",
-            "email_files",
-            "email_file_ids",
-            "selected_headers",
             "prompt",
-            "rule",
-            "created_at",
-            "is_complete",
-            "username",
-            "custom_prompt",
             "prompt_modules",
             "base_prompt_id",
             "prompt_metadata",
-        ]
-        read_only_fields = [
             "rule",
             "created_at",
             "is_complete",
-            "prompt_metadata",
-            "user",
+            "created_by",
+            "creator_username",
+            "email_files",
         ]
-        extra_kwargs = {
-            "prompt": {"required": False},
-            "workspace_name": {
-                "required": False,
-                "max_length": 25,
-            },  # Enforce 25 char limit
-        }
+        read_only_fields = [
+            "created_at",
+            "is_complete",
+            "prompt_metadata",
+            "created_by",
+            "creator_username",
+            "workspace_name",
+            "email_files",
+        ]
 
-    def validate_workspace_name(self, value):
-        """Validate that workspace_name is not longer than 25 characters."""
-        if len(value) > 25:
-            raise serializers.ValidationError(
-                "Workspace name cannot exceed 25 characters."
-            )
-        return value
+    def get_email_files(self, obj):
+        """Get email files associated with this rule generation's workspace."""
+        email_files = obj.workspace.email_files.all()
+        serializer = EmailFileSerializer(email_files, many=True, context=self.context)
+        return serializer.data
 
     def create(self, validated_data):
-        email_file_ids = validated_data.pop("email_file_ids")
-        custom_prompt = validated_data.pop("custom_prompt", None)
-
-        # Initialize with empty prompt (will be generated by the service if needed)
-        if "prompt" not in validated_data:
-            validated_data["prompt"] = ""
-
-        # If custom prompt was provided, use it directly
-        if custom_prompt:
-            validated_data["prompt"] = custom_prompt
-
-        # Set default workspace name if not provided
-        if (
-            "workspace_name" not in validated_data
-            or not validated_data["workspace_name"]
-        ):
-            validated_data["workspace_name"] = "Unnamed Workspace"
-
-        rule_generation = RuleGeneration.objects.create(**validated_data)
-
-        # Add the email files to the rule generation, ensuring they belong to the user
-        user = validated_data.get("user")
-        email_files = EmailFile.objects.filter(id__in=email_file_ids, user=user)
-        rule_generation.email_files.set(email_files)
-
-        return rule_generation
+        # Set the current user as the creator
+        validated_data["created_by"] = self.context["request"].user
+        return super().create(validated_data)
 
 
 class WorkspaceShareSerializer(serializers.ModelSerializer):
     """Serializer for the WorkspaceShare model."""
 
-    owner_username = serializers.CharField(source="owner.username", read_only=True)
+    owner_username = serializers.CharField(
+        source="workspace.user.username", read_only=True
+    )
     shared_with_username = serializers.CharField(
         source="shared_with.username", read_only=True
     )
     shared_with_email = serializers.CharField(
         source="shared_with.email", read_only=True
     )
+    workspace_name = serializers.CharField(source="workspace.name", read_only=True)
 
     class Meta:
         model = WorkspaceShare
         fields = [
             "id",
+            "workspace",
             "workspace_name",
-            "owner",
             "owner_username",
             "shared_with",
             "shared_with_username",
@@ -278,8 +282,5 @@ class WorkspaceShareSerializer(serializers.ModelSerializer):
             "owner_username",
             "shared_with_username",
             "shared_with_email",
+            "workspace_name",
         ]
-        extra_kwargs = {
-            "owner": {"write_only": True},
-            "shared_with": {"write_only": True},
-        }
