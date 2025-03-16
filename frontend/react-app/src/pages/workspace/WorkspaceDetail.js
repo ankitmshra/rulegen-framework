@@ -44,12 +44,13 @@ const WorkspaceDetail = () => {
     // Store in localStorage
     localStorage.setItem(`workspace_${workspaceId}_tab`, tab);
     
-    // Update URL without full page reload
-    if (tab === 'prompt-management') {
-      navigate(`/workspaces/${workspaceId}/prompts`);
-    } else {
-      navigate(`/workspaces/${workspaceId}/rules`);
-    }
+    // Remove the navigation lines that change the URL
+    // No longer need:
+    // if (tab === 'prompt-management') {
+    //   navigate(`/workspaces/${workspaceId}/prompts`);
+    // } else {
+    //   navigate(`/workspaces/${workspaceId}/rules`);
+    // }
   };
 
   if (loading) {
@@ -153,7 +154,7 @@ const WorkspaceDetail = () => {
 
       {/* Tab content */}
       <div className="px-6 py-5">
-        {activeTab === 'rule' && <RuleGeneration key={`rules-${workspace.id}`} workspace={workspace} />}
+        {activeTab === 'rule-generation' && <RuleGeneration key={`rules-${workspace.id}`} workspace={workspace} />}
         {activeTab === 'prompt-management' && <PromptManagement workspace={workspace} />}
       </div>
 
