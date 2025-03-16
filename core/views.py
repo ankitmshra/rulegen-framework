@@ -114,18 +114,116 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         """Set the user when creating a workspace."""
         serializer.save(user=self.request.user)
 
-    # Add a method to check permissions specifically for workspace creation
     def create(self, request, *args, **kwargs):
-        """Override create method to handle permissions."""
-        # For admin users, we don't need additional checks
-        try:
-            if request.user.profile.is_admin:
-                return super().create(request, *args, **kwargs)
-        except Exception:
-            pass
+        """Override create method to provide enhanced response with ownership info."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        # For regular users, continue with the standard create process
-        return super().create(request, *args, **kwargs)
+        # Explicitly set the user (owner) to the current user
+        serializer.save(user=request.user)
+
+        # Enhance the response with additional fields that match the summary endpoint format
+        response_data = serializer.data
+        response_data["is_owner"] = True
+        response_data["owner_username"] = request.user.username
+        response_data["rule_count"] = 0
+        response_data["latest_date"] = None
+        response_data["shares"] = []
+
+        headers = self.get_success_headers(serializer.data)
+        return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        """Get a summary of workspaces including ownership and sharing information."""
+        user = request.user
+
+        # Get user's own workspaces
+        own_workspaces = Workspace.objects.filter(user=user)
+
+        # Get workspaces shared with the user
+        shared_workspaces_ids = WorkspaceShare.objects.filter(
+            shared_with=user
+        ).values_list("workspace_id", flat=True)
+        shared_workspaces = Workspace.objects.filter(id__in=shared_workspaces_ids)
+
+        # Ensure we're not double-counting (a workspace shouldn't be both owned and shared)
+        shared_workspaces = shared_workspaces.exclude(user=user)
+
+        # Prepare workspace summaries
+        workspace_summaries = []
+
+        # Add user's own workspaces
+        for workspace in own_workspaces:
+            # Count rules in this workspace
+            rule_count = RuleGeneration.objects.filter(workspace=workspace).count()
+
+            # Get latest rule generation date
+            latest_rule = (
+                RuleGeneration.objects.filter(workspace=workspace)
+                .order_by("-created_at")
+                .first()
+            )
+
+            latest_date = latest_rule.created_at if latest_rule else None
+
+            # Get shares for this workspace
+            shares = WorkspaceShare.objects.filter(workspace=workspace)
+            shares_info = [
+                {
+                    "user_id": share.shared_with.id,
+                    "username": share.shared_with.username,
+                    "permission": share.permission,
+                }
+                for share in shares
+            ]
+
+            workspace_summaries.append(
+                {
+                    "id": workspace.id,
+                    "name": workspace.name,
+                    "description": workspace.description,
+                    "is_owner": True,
+                    "owner_username": user.username,
+                    "created_at": workspace.created_at,
+                    "rule_count": rule_count,
+                    "latest_date": latest_date,
+                    "shares": shares_info,
+                }
+            )
+
+        # Add workspaces shared with user
+        for workspace in shared_workspaces:
+            # Count rules in this workspace
+            rule_count = RuleGeneration.objects.filter(workspace=workspace).count()
+
+            # Get latest rule generation date
+            latest_rule = (
+                RuleGeneration.objects.filter(workspace=workspace)
+                .order_by("-created_at")
+                .first()
+            )
+
+            latest_date = latest_rule.created_at if latest_rule else None
+
+            # Get share permission
+            share = WorkspaceShare.objects.get(workspace=workspace, shared_with=user)
+
+            workspace_summaries.append(
+                {
+                    "id": workspace.id,
+                    "name": workspace.name,
+                    "description": workspace.description,
+                    "is_owner": False,
+                    "owner_username": workspace.user.username,
+                    "created_at": workspace.created_at,
+                    "rule_count": rule_count,
+                    "latest_date": latest_date,
+                    "permission": share.permission,
+                }
+            )
+
+        return Response(workspace_summaries, status=status.HTTP_200_OK)
 
 
 class EmailFileViewSet(viewsets.ModelViewSet):
@@ -364,16 +462,41 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
     serializer_class = RuleGenerationSerializer
 
     def get_queryset(self):
-        """Return rule generations based on user permissions."""
+        """Return rule generations based on user permissions with proper workspace filtering."""
         user = self.request.user
 
-        # Get workspaces this user has access to
+        # Get workspace ID from query parameter
+        workspace_id = self.request.query_params.get("workspace")
+
+        # If specific workspace is requested, verify access and return its rules
+        if workspace_id:
+            try:
+                # Find the workspace first
+                workspace = Workspace.objects.get(id=workspace_id)
+
+                # Check if user has access (owner or shared)
+                has_access = (workspace.user == user) or WorkspaceShare.objects.filter(
+                    workspace=workspace, shared_with=user
+                ).exists()
+
+                if has_access:
+                    # User has access, return ALL rules for this workspace regardless of creator
+                    return RuleGeneration.objects.filter(workspace=workspace).order_by(
+                        "-created_at"
+                    )
+                else:
+                    # No access to this workspace
+                    return RuleGeneration.objects.none()
+
+            except Workspace.DoesNotExist:
+                # Workspace not found
+                return RuleGeneration.objects.none()
+
+        # No specific workspace requested, return rules from all accessible workspaces
         accessible_workspaces = Workspace.objects.filter(
-            Q(user=user)  # User's own workspaces
-            | Q(shares__shared_with=user)  # Shared workspaces
+            Q(user=user) | Q(shares__shared_with=user)
         )
 
-        # Get rule generations for these workspaces
         return RuleGeneration.objects.filter(
             workspace__in=accessible_workspaces
         ).order_by("-created_at")

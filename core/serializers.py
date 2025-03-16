@@ -113,8 +113,14 @@ class WorkspaceSerializer(serializers.ModelSerializer):
             "description",
             "selected_headers",
         ]
-        read_only_fields = ["created_at"]
-        extra_kwargs = {"user": {"write_only": True}}
+        read_only_fields = ["created_at", "user"]
+        extra_kwargs = {"user": {"required": False}}
+
+    def validate_selected_headers(self, value):
+        """Ensure selected_headers is properly formatted."""
+        if value is None:
+            return []
+        return value
 
 
 class EmailFileSerializer(serializers.ModelSerializer):

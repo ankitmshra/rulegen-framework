@@ -153,7 +153,7 @@ const WorkspaceDetail = () => {
 
       {/* Tab content */}
       <div className="px-6 py-5">
-        {activeTab === 'rule-generation' && <RuleGeneration workspace={workspace} />}
+        {activeTab === 'rule' && <RuleGeneration key={`rules-${workspace.id}`} workspace={workspace} />}
         {activeTab === 'prompt-management' && <PromptManagement workspace={workspace} />}
       </div>
 

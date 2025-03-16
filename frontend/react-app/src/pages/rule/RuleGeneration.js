@@ -32,6 +32,77 @@ const RuleGeneration = ({ workspace }) => {
   const [activeStep, setActiveStep] = useState('upload');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Check if steps are completable
+  const canAccessHeaders = emailFiles.length > 0;
+  const canAccessPrompt = canAccessHeaders && selectedHeaders.length > 0;
+  const canAccessRules = canAccessPrompt && generatedPrompt !== '';
+
+  // Determine the most advanced step we can show
+  useEffect(() => {
+    const determineInitialStep = () => {
+      if (generatedRules.length > 0 && generatedPrompt !== '') {
+        return 'rule';
+      } else if (canAccessPrompt) {
+        return 'prompt';
+      } else if (canAccessHeaders) {
+        return 'headers';
+      }
+      return 'upload';
+    };
+
+    if (dataLoaded) {
+      const initialStep = determineInitialStep();
+      setActiveStep(initialStep);
+    }
+  }, [dataLoaded, canAccessHeaders, canAccessPrompt, canAccessRules, generatedRules.length, generatedPrompt]);
+
+  // Load previously generated rules when the component mounts
+  useEffect(() => {
+    const fetchExistingRules = async () => {
+      if (!workspace || !workspace.id) return;
+      
+      try {
+        setLoading(true);  // Show loading indicator when switching workspaces
+        
+        // Explicitly include the workspace ID and force a fresh fetch
+        const response = await ruleGenerationAPI.getByWorkspace(workspace.id);
+        
+        if (response.data && response.data.length > 0) {
+          // Sort rules by creation date descending (newest first)
+          const sortedRules = response.data.sort((a, b) => 
+            new Date(b.created_at) - new Date(a.created_at)
+          );
+          
+          console.log(`Loaded ${sortedRules.length} rules for workspace ${workspace.id}`);
+          setGeneratedRules(sortedRules);
+          
+          // If there are completed rules, set the first one as current
+          const completedRules = sortedRules.filter(rule => rule.is_complete);
+          if (completedRules.length > 0) {
+            setCurrentRuleIndex(sortedRules.indexOf(completedRules[0]));
+            
+            // Get the prompt from the newest rule
+            if (sortedRules[0].prompt) {
+              setGeneratedPrompt(sortedRules[0].prompt);
+            }
+          }
+        } else {
+          // Clear rules if none found for this workspace
+          console.log(`No rules found for workspace ${workspace.id}`);
+          setGeneratedRules([]);
+        }
+      } catch (err) {
+        console.error('Error fetching existing rules:', err);
+        setGeneratedRules([]);  // Clear rules on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchExistingRules();
+  }, [workspace?.id]);
 
   // Effect for initial data loading
   useEffect(() => {
@@ -68,8 +139,10 @@ const RuleGeneration = ({ workspace }) => {
         if (filesResponse.data.length > 0) {
           const headersResponse = await emailFileAPI.getAvailableHeaders(workspace.id);
           setAvailableHeaders(headersResponse.data);
-          setActiveStep('headers');
         }
+        
+        // Mark data as loaded to trigger step determination
+        setDataLoaded(true);
       } catch (err) {
         console.error('Error fetching initial data:', err);
         setError('Failed to load initial data');
@@ -194,61 +267,110 @@ const RuleGeneration = ({ workspace }) => {
     }
   };
 
-  // Step indicator component
-  const StepIndicator = ({ steps, currentStep }) => {
+  // Clickable step indicator component
+  const StepIndicator = ({ steps, currentStep, onStepClick }) => {
     return (
       <div className="mb-8">
         <nav aria-label="Progress">
           <ol className="flex items-center">
-            {steps.map((step, stepIdx) => (
-              <li key={step.id} className={`${stepIdx !== steps.length - 1 ? 'pr-8 sm:pr-20' : ''} relative`}>
-                {step.id === currentStep ? (
-                  <div className="relative flex items-center justify-center" aria-current="step">
-                    <span className="absolute w-5 h-5 p-px flex" aria-hidden="true">
-                      <span className="w-full h-full rounded-full bg-indigo-200" />
-                    </span>
-                    <span className="relative block w-2.5 h-2.5 bg-indigo-600 rounded-full" aria-hidden="true" />
-                    <span className="ml-4 text-sm font-medium text-indigo-600">{step.name}</span>
+            {steps.map((step, stepIdx) => {
+              // Determine if this step is clickable
+              const isClickable = step.canAccess;
+              
+              // Generate the appropriate class for the wrapper
+              const wrapperClass = isClickable 
+                ? "cursor-pointer hover:bg-gray-50 rounded-md px-2 py-1" 
+                : "";
+              
+              return (
+                <li key={step.id} className={`${stepIdx !== steps.length - 1 ? 'pr-8 sm:pr-20' : ''} relative`}>
+                  {/* Click handler wrapper */}
+                  <div 
+                    className={wrapperClass}
+                    onClick={() => isClickable && onStepClick(step.id)}
+                    title={isClickable ? `Go to ${step.name}` : `Complete previous steps first`}
+                  >
+                    {/* Current step */}
+                    {step.id === currentStep && (
+                      <div className="flex items-center">
+                        <div className="relative">
+                          <div className="w-5 h-5 bg-indigo-200 rounded-full flex items-center justify-center">
+                            <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full"></div>
+                          </div>
+                        </div>
+                        <span className="ml-4 text-sm font-medium text-indigo-600">{step.name}</span>
+                      </div>
+                    )}
+                    
+                    {/* Completed step */}
+                    {step.id !== currentStep && step.completed && (
+                      <div className="flex items-center">
+                        <div className="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <span className="ml-4 text-sm font-medium text-gray-500">{step.name}</span>
+                      </div>
+                    )}
+                    
+                    {/* Upcoming step */}
+                    {step.id !== currentStep && !step.completed && (
+                      <div className="flex items-center">
+                        <div className="w-5 h-5 bg-gray-200 rounded-full"></div>
+                        <span className="ml-4 text-sm font-medium text-gray-500">{step.name}</span>
+                      </div>
+                    )}
                   </div>
-                ) : step.completed ? (
-                  <div className="relative flex items-center justify-center group">
-                    <span className="h-5 w-5 flex items-center justify-center bg-indigo-600 rounded-full">
-                      <svg className="h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </span>
-                    <span className="ml-4 text-sm font-medium text-gray-500 group-hover:text-gray-900">{step.name}</span>
-                  </div>
-                ) : (
-                  <div className="relative flex items-center justify-center group">
-                    <div className="h-5 w-5 flex items-center justify-center bg-gray-200 rounded-full">
-                      <span className="h-2.5 w-2.5 bg-transparent rounded-full" aria-hidden="true" />
-                    </div>
-                    <span className="ml-4 text-sm font-medium text-gray-500 group-hover:text-gray-900">{step.name}</span>
-                  </div>
-                )}
 
-                {stepIdx !== steps.length - 1 ? (
-                  <div className="hidden sm:block absolute top-0 right-0 h-full w-5" aria-hidden="true">
-                    <svg className="h-full w-full text-gray-300" viewBox="0 0 22 80" fill="none" preserveAspectRatio="none">
-                      <path d="M0 -2L20 40L0 82" vectorEffect="non-scaling-stroke" stroke="currentcolor" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                ) : null}
-              </li>
-            ))}
+                  {/* Connection line between steps */}
+                  {stepIdx !== steps.length - 1 && (
+                    <div className="hidden sm:block absolute top-0 right-0 h-full w-5" aria-hidden="true">
+                      <svg className="h-full w-full text-gray-300" viewBox="0 0 22 80" fill="none" preserveAspectRatio="none">
+                        <path d="M0 -2L20 40L0 82" vectorEffect="non-scaling-stroke" stroke="currentcolor" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </nav>
       </div>
     );
   };
 
-  // Define steps for the workflow
+  // Handle clicking on a step
+  const handleStepClick = (stepId) => {
+    setActiveStep(stepId);
+  };
+
+  // Define steps for the workflow with accessibility flags
   const steps = [
-    { id: 'upload', name: 'Upload Emails', completed: emailFiles.length > 0 },
-    { id: 'headers', name: 'Select Headers', completed: selectedHeaders.length > 0 && activeStep !== 'headers' },
-    { id: 'prompt', name: 'Configure Prompt', completed: generatedPrompt !== '' && activeStep !== 'prompt' },
-    { id: 'rule', name: 'Generate Rules', completed: generatedRules.length > 0 }
+    { 
+      id: 'upload', 
+      name: 'Upload Emails', 
+      completed: emailFiles.length > 0,
+      canAccess: true // Always accessible
+    },
+    { 
+      id: 'headers', 
+      name: 'Select Headers', 
+      completed: selectedHeaders.length > 0 && activeStep !== 'headers',
+      canAccess: canAccessHeaders 
+    },
+    { 
+      id: 'prompt', 
+      name: 'Configure Prompt', 
+      completed: generatedPrompt !== '' && activeStep !== 'prompt',
+      canAccess: canAccessPrompt
+    },
+    { 
+      id: 'rule', 
+      name: 'Generate Rules', 
+      completed: generatedRules.length > 0,
+      canAccess: generatedRules.length > 0 || canAccessRules
+    }
   ];
 
   if (loading) {
@@ -275,8 +397,12 @@ const RuleGeneration = ({ workspace }) => {
         Generate SpamAssassin rules using email samples and configured prompts
       </p>
 
-      {/* Step indicator */}
-      <StepIndicator steps={steps} currentStep={activeStep} />
+      {/* Interactive Step indicator */}
+      <StepIndicator 
+        steps={steps} 
+        currentStep={activeStep} 
+        onStepClick={handleStepClick}
+      />
 
       {/* Content based on active step */}
       <div className="bg-white shadow rounded-lg overflow-hidden">

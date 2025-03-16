@@ -73,10 +73,11 @@ def logout_view(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def current_user(request):
     """Return current user details if authenticated."""
     if not request.user.is_authenticated:
-        return Response({"authenticated": False}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({"authenticated": False})
 
     # Get or create user profile
     try:

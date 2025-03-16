@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { authAPI } from '../../services/api';
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -35,13 +36,23 @@ const Login = () => {
       setIsSubmitting(true);
       setErrorMessage('');
       
-      await login(username, password);
-      
-      // If rememberMe is checked, store the username in localStorage
-      if (rememberMe) {
-        localStorage.setItem('rememberedUsername', username);
-      } else {
-        localStorage.removeItem('rememberedUsername');
+      // Direct API call to catch the error response properly
+      try {
+        const response = await authAPI.login(username, password);
+        
+        // If successful, update auth context
+        await login(username, password);
+        
+        // If rememberMe is checked, store the username in localStorage
+        if (rememberMe) {
+          localStorage.setItem('rememberedUsername', username);
+        } else {
+          localStorage.removeItem('rememberedUsername');
+        }
+      } catch (apiError) {
+        // Extract error message from API response
+        const message = apiError.response?.data?.error || 'Invalid credentials';
+        throw new Error(message);
       }
       
       // Navigate will happen in the useEffect when currentUser is set
