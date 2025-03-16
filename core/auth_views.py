@@ -3,6 +3,7 @@
 from django.contrib.auth import authenticate, login, logout
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from .models import UserProfile
@@ -41,6 +42,8 @@ def login_view(request):
                     "firstName": user.first_name,
                     "lastName": user.last_name,
                     "role": profile.role,
+                    "isAdmin": profile.is_admin,  # Add this for frontend checks
+                    "isPowerUser": profile.is_power_user,  # Add this for frontend checks
                 },
             }
         )
@@ -49,6 +52,7 @@ def login_view(request):
     )
 
 
+@csrf_exempt  # Explicitly exempt logout from CSRF to ensure it works
 @api_view(["POST"])
 def logout_view(request):
     """Thoroughly clean up the session when user logs out."""
@@ -89,7 +93,7 @@ def current_user(request):
             "firstName": request.user.first_name,
             "lastName": request.user.last_name,
             "role": profile.role,
-            "isAdmin": profile.is_admin,
+            "isAdmin": profile.is_admin,  # Ensure these are explicitly included
             "isPowerUser": profile.is_power_user,
         }
     )

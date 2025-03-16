@@ -15,15 +15,16 @@ class APIAuthenticationMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # Skip authentication checks for login and CSRF endpoints
+        # Skip authentication checks for auth-related endpoints, login page, and CSRF
+        # This allows unauthenticated users to access login/auth endpoints
         if (
-            request.path.startswith("/api/auth/login/")
+            request.path.startswith("/api/auth/")
             or request.path == "/login/"
             or "csrf" in request.path
         ):
             return self.get_response(request)
 
-        # Check authentication for API routes
+        # Check authentication for other API routes
         if request.path.startswith("/api/") and not request.user.is_authenticated:
             # Return 401 for API requests
             return JsonResponse({"error": "Authentication required"}, status=401)

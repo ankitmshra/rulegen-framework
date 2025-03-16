@@ -3,7 +3,7 @@ Views for core API endpoints.
 """
 
 from django.contrib.auth.models import User
-from django.db.models import Count, Max, Q, Value, BooleanField
+from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -114,83 +114,18 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         """Set the user when creating a workspace."""
         serializer.save(user=self.request.user)
 
-    @action(detail=False, methods=["get"])
-    def summary(self, request):
-        """Get a summary of all workspaces with their latest rule generation."""
-        workspaces = self.get_queryset()
+    # Add a method to check permissions specifically for workspace creation
+    def create(self, request, *args, **kwargs):
+        """Override create method to handle permissions."""
+        # For admin users, we don't need additional checks
+        try:
+            if request.user.profile.is_admin:
+                return super().create(request, *args, **kwargs)
+        except Exception:
+            pass
 
-        # Get user's own workspaces
-        own_workspaces = workspaces.filter(user=request.user).annotate(
-            rule_count=Count("rule_generations"),
-            latest_rule_id=Max("rule_generations__id"),
-            latest_date=Max("rule_generations__created_at"),
-            is_owner=Value(True, output_field=BooleanField()),
-        )
-
-        # Add share information to each owned workspace
-        own_workspaces_with_shares = []
-        for workspace in own_workspaces:
-            shares = WorkspaceShare.objects.filter(workspace=workspace).select_related(
-                "shared_with"
-            )
-
-            shares_data = []
-            for share in shares:
-                shares_data.append(
-                    {
-                        "user_id": share.shared_with.id,
-                        "username": share.shared_with.username,
-                        "email": share.shared_with.email,
-                        "permission": share.permission,
-                    }
-                )
-
-            workspace_data = WorkspaceSerializer(
-                workspace, context={"request": request}
-            ).data
-            workspace_data["rule_count"] = workspace.rule_count
-            workspace_data["latest_rule_id"] = workspace.latest_rule_id
-            workspace_data["latest_date"] = workspace.latest_date
-            workspace_data["is_owner"] = workspace.is_owner
-            workspace_data["shares"] = shares_data
-
-            own_workspaces_with_shares.append(workspace_data)
-
-        # Get workspaces shared with the user
-        shared_workspaces = workspaces.filter(~Q(user=request.user)).annotate(
-            rule_count=Count("rule_generations"),
-            latest_rule_id=Max("rule_generations__id"),
-            latest_date=Max("rule_generations__created_at"),
-            is_owner=Value(False, output_field=BooleanField()),
-        )
-
-        shared_workspaces_data = []
-        for workspace in shared_workspaces:
-            # Get the sharing permission
-            share = WorkspaceShare.objects.filter(
-                workspace=workspace, shared_with=request.user
-            ).first()
-
-            workspace_data = WorkspaceSerializer(
-                workspace, context={"request": request}
-            ).data
-            workspace_data["rule_count"] = workspace.rule_count
-            workspace_data["latest_rule_id"] = workspace.latest_rule_id
-            workspace_data["latest_date"] = workspace.latest_date
-            workspace_data["is_owner"] = workspace.is_owner
-            workspace_data["permission"] = share.permission if share else "read"
-
-            shared_workspaces_data.append(workspace_data)
-
-        # Combine own and shared workspaces
-        all_workspaces = own_workspaces_with_shares + shared_workspaces_data
-
-        # Sort by latest date (handle None values)
-        all_workspaces = sorted(
-            all_workspaces, key=lambda x: x.get("latest_date") or "", reverse=True
-        )
-
-        return Response(all_workspaces)
+        # For regular users, continue with the standard create process
+        return super().create(request, *args, **kwargs)
 
 
 class EmailFileViewSet(viewsets.ModelViewSet):

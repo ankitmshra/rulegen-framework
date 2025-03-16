@@ -1,5 +1,20 @@
 import axios from 'axios';
 
+// Function to get CSRF token from cookie
+function getCsrfToken() {
+  const name = 'csrftoken=';
+  const decodedCookie = decodeURIComponent(document.cookie);
+  const cookieArray = decodedCookie.split(';');
+  
+  for (let i = 0; i < cookieArray.length; i++) {
+    let cookie = cookieArray[i].trim();
+    if (cookie.indexOf(name) === 0) {
+      return cookie.substring(name.length, cookie.length);
+    }
+  }
+  return '';
+}
+
 // Create axios instance with defaults
 const api = axios.create({
   baseURL: '/api',
@@ -7,6 +22,15 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true, // Important for cookies and session authentication
+});
+
+// Add CSRF token to all requests
+api.interceptors.request.use(config => {
+  // Only add CSRF token for non-GET requests
+  if (config.method !== 'get') {
+    config.headers['X-CSRFToken'] = getCsrfToken();
+  }
+  return config;
 });
 
 // Auth endpoints
@@ -64,7 +88,7 @@ export const ruleGenerationAPI = {
 
 // User management endpoints (admin only)
 export const userAPI = {
-  getAll: () => api.get('/users/'),
+  getAll: (query = '') => api.get(`/users/${query}`),
   create: (data) => api.post('/users/', data),
   update: (id, data) => api.put(`/users/${id}/`, data),
   delete: (id) => api.delete(`/users/${id}/`),
