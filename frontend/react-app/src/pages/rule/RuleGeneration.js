@@ -4,6 +4,7 @@ import EmailUploader from '../../components/rule/EmailUploader';
 import HeaderSelector from '../../components/rule/HeaderSelector';
 import PromptEditor from '../../components/rule/PromptEditor';
 import RuleViewer from '../../components/rule/RuleViewer';
+import SpamHamStats from '../../components/rule/SpamHamStats';
 
 const RuleGeneration = ({ workspace }) => {
   // Email file state
@@ -396,6 +397,9 @@ const RuleGeneration = ({ workspace }) => {
       <p className="text-sm text-gray-500 mb-6">
         Generate SpamAssassin rules using email samples and configured prompts
       </p>
+
+      {/* Spam/Ham Statistics */}
+      {emailFiles.length > 0 && <SpamHamStats emailFiles={emailFiles} />}
 
       {/* Interactive Step indicator */}
       <StepIndicator 

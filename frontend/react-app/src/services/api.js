@@ -63,6 +63,7 @@ export const emailFileAPI = {
   }),
   delete: (id) => api.delete(`/email-files/${id}/`),
   getAvailableHeaders: (workspaceId) => api.get(`/email-files/available_headers/?workspace=${workspaceId}`),
+  getStats: (workspaceId) => api.get(`/email-files/stats/?workspace=${workspaceId}`),
 };
 
 // Prompt template endpoints

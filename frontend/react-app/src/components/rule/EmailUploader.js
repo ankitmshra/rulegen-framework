@@ -3,6 +3,7 @@ import { emailFileAPI } from '../../services/api';
 
 const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [selectedEmailType, setSelectedEmailType] = useState('spam'); // Default to spam
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
@@ -18,6 +19,10 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
     }
     
     setSelectedFiles(emlFiles);
+  };
+
+  const handleEmailTypeChange = (e) => {
+    setSelectedEmailType(e.target.value);
   };
 
   const handleDragOver = (e) => {
@@ -61,6 +66,7 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
         const formData = new FormData();
         formData.append('file', file);
         formData.append('workspace', workspaceId);
+        formData.append('email_type', selectedEmailType);
         
         const response = await emailFileAPI.upload(formData);
         uploadedFiles.push(response.data);
@@ -83,6 +89,10 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
     }
   };
 
+  // Count of each email type
+  const spamCount = existingFiles.filter(file => file.email_type === 'spam').length;
+  const hamCount = existingFiles.filter(file => file.email_type === 'ham').length;
+
   return (
     <div className="px-6 py-5">
       <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Email Files</h3>
@@ -92,6 +102,46 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
           <span className="block sm:inline">{error}</span>
         </div>
       )}
+
+      {/* Email Type Selection */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Email Classification
+        </label>
+        <div className="flex space-x-4">
+          <div className="flex items-center">
+            <input
+              id="email-type-spam"
+              name="email-type"
+              type="radio"
+              value="spam"
+              checked={selectedEmailType === 'spam'}
+              onChange={handleEmailTypeChange}
+              className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300"
+            />
+            <label htmlFor="email-type-spam" className="ml-2 block text-sm text-gray-700">
+              Spam
+            </label>
+          </div>
+          <div className="flex items-center">
+            <input
+              id="email-type-ham"
+              name="email-type"
+              type="radio"
+              value="ham"
+              checked={selectedEmailType === 'ham'}
+              onChange={handleEmailTypeChange}
+              className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300"
+            />
+            <label htmlFor="email-type-ham" className="ml-2 block text-sm text-gray-700">
+              Ham (Not Spam)
+            </label>
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-gray-500">
+          Select "Spam" for unwanted emails and "Ham" for legitimate emails. For best results, include examples of both types.
+        </p>
+      </div>
 
       <div 
         className="mt-2 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md"
@@ -113,7 +163,7 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
               strokeLinejoin="round"
             />
           </svg>
-          <div className="flex text-sm text-gray-600">
+          <div className="flex text-sm text-gray-600 justify-center">
             <label
               htmlFor="file-upload"
               className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
@@ -133,7 +183,13 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
             </label>
             <p className="pl-1">or drag and drop</p>
           </div>
-          <p className="text-xs text-gray-500">Only .eml files are supported</p>
+          <p className="text-xs text-gray-500">
+            Only .eml files are supported. These will be classified as {selectedEmailType === 'spam' ? (
+              <span className="font-semibold text-red-600">SPAM</span>
+            ) : (
+              <span className="font-semibold text-green-600">HAM</span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -149,8 +205,15 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
                   </svg>
                   <span className="ml-2 flex-1 w-0 truncate">{file.name}</span>
                 </div>
-                <div className="ml-4 flex-shrink-0">
-                  <span className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</span>
+                <div className="ml-4 flex-shrink-0 flex items-center">
+                  <span className="text-xs text-gray-500 mr-2">{(file.size / 1024).toFixed(1)} KB</span>
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    selectedEmailType === 'spam' 
+                      ? 'bg-red-100 text-red-800' 
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    {selectedEmailType === 'spam' ? 'SPAM' : 'HAM'}
+                  </span>
                 </div>
               </li>
             ))}
@@ -176,15 +239,26 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
       <div className="mt-6">
         {existingFiles.length > 0 && (
           <div className="mb-4">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Existing Email Files ({existingFiles.length}):</h4>
+            <h4 className="text-sm font-medium text-gray-700 mb-2">
+              Existing Email Files ({existingFiles.length}: {spamCount} Spam, {hamCount} Ham)
+            </h4>
             <div className="bg-gray-50 rounded-md p-4 max-h-40 overflow-auto">
               <ul className="divide-y divide-gray-200">
                 {existingFiles.map((file) => (
-                  <li key={file.id} className="py-2 flex justify-between">
+                  <li key={file.id} className="py-2 flex justify-between items-center">
                     <span className="text-sm text-gray-600">{file.original_filename}</span>
-                    <span className="text-xs text-gray-500">
-                      Uploaded: {new Date(file.uploaded_at).toLocaleDateString()}
-                    </span>
+                    <div className="flex items-center">
+                      <span className="text-xs text-gray-500 mr-3">
+                        Uploaded: {new Date(file.uploaded_at).toLocaleDateString()}
+                      </span>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        file.email_type === 'spam' 
+                          ? 'bg-red-100 text-red-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {file.email_type === 'spam' ? 'SPAM' : 'HAM'}
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>

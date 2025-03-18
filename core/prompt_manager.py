@@ -115,11 +115,17 @@ class PromptManager:
             found_urls = re.findall(r'https?://[^\s<>"]+', html)
             urls.extend(found_urls[:10])  # Limit to first 10 URLs
 
+        # Extract spam and ham pattern information
+        spam_patterns = analysis_data[0].get("spam_patterns", {})
+        ham_patterns = analysis_data[0].get("ham_patterns", {})
+
         return {
             "headers": headers,
             "body_plain": body_plain,
             "body_html": body_html,
             "urls": list(set(urls))[:10],  # Remove duplicates and limit
+            "spam_patterns": spam_patterns,
+            "ham_patterns": ham_patterns,
         }
 
     @staticmethod
@@ -193,6 +199,104 @@ Extracted URLs:
 """
         prompt_content = prompt_content.replace("{EMAIL_BODY}", email_body_content)
 
+        # Add spam/ham differential analysis if available
+        if "spam_patterns" in formatted_data or "ham_patterns" in formatted_data:
+            spam_ham_content = """
+## Spam vs Ham Analysis
+
+The following is an analysis of patterns found in spam and ham (non-spam) emails:
+
+### Patterns found in SPAM emails (to prioritize):
+"""
+
+            # Add spam patterns
+            if "spam_patterns" in formatted_data and formatted_data["spam_patterns"]:
+                spam_patterns = formatted_data["spam_patterns"]
+
+                # Add header patterns
+                if (
+                    "header_patterns" in spam_patterns
+                    and spam_patterns["header_patterns"]
+                ):
+                    spam_ham_content += "\nHeader patterns:\n"
+                    for header, values in spam_patterns["header_patterns"].items():
+                        # Only show first few values for clarity
+                        value_display = (
+                            values[:3] if isinstance(values, list) else values
+                        )
+                        spam_ham_content += f"- {header}: {value_display}\n"
+
+                # Add body patterns
+                if "body_patterns" in spam_patterns and spam_patterns["body_patterns"]:
+                    body_patterns = spam_patterns["body_patterns"]
+
+                    if (
+                        "common_phrases" in body_patterns
+                        and body_patterns["common_phrases"]
+                    ):
+                        spam_ham_content += "\nCommon phrases:\n"
+                        for phrase in body_patterns["common_phrases"][:5]:
+                            spam_ham_content += f"- {phrase}\n"
+
+                    if (
+                        "url_patterns" in body_patterns
+                        and body_patterns["url_patterns"]
+                    ):
+                        spam_ham_content += "\nURL patterns:\n"
+                        for url in body_patterns["url_patterns"][:5]:
+                            spam_ham_content += f"- {url}\n"
+
+            spam_ham_content += """
+### Patterns found in HAM emails (to de-prioritize):
+"""
+
+            # Add ham patterns
+            if "ham_patterns" in formatted_data and formatted_data["ham_patterns"]:
+                ham_patterns = formatted_data["ham_patterns"]
+
+                # Add header patterns
+                if (
+                    "header_patterns" in ham_patterns
+                    and ham_patterns["header_patterns"]
+                ):
+                    spam_ham_content += "\nHeader patterns:\n"
+                    for header, values in ham_patterns["header_patterns"].items():
+                        # Only show first few values for clarity
+                        value_display = (
+                            values[:3] if isinstance(values, list) else values
+                        )
+                        spam_ham_content += f"- {header}: {value_display}\n"
+
+                # Add body patterns
+                if "body_patterns" in ham_patterns and ham_patterns["body_patterns"]:
+                    body_patterns = ham_patterns["body_patterns"]
+
+                    if (
+                        "common_phrases" in body_patterns
+                        and body_patterns["common_phrases"]
+                    ):
+                        spam_ham_content += "\nCommon phrases:\n"
+                        for phrase in body_patterns["common_phrases"][:5]:
+                            spam_ham_content += f"- {phrase}\n"
+
+                    if (
+                        "url_patterns" in body_patterns
+                        and body_patterns["url_patterns"]
+                    ):
+                        spam_ham_content += "\nURL patterns:\n"
+                        for url in body_patterns["url_patterns"][:5]:
+                            spam_ham_content += f"- {url}\n"
+
+            # Add guidance for the AI
+            spam_ham_content += """
+IMPORTANT: When generating SpamAssassin rules,
+prioritize patterns unique to SPAM emails and avoid patterns that are common in HAM emails.
+This differential approach will minimize false positives.
+"""
+
+            # Add the spam vs ham analysis to the prompt
+            prompt_content += spam_ham_content
+
         # Add modules
         added_modules = []
         for module in selected_modules:
@@ -221,6 +325,7 @@ Extracted URLs:
 2. Present each subrule in its own separate code block for easy copying
 3. Follow the exact format shown in the examples
 4. Group related subrules by type (headers, URI, body, etc.)
+5. Prioritize patterns unique to SPAM and avoid patterns common in HAM
 """
 
         # Prepare response with metadata
@@ -233,6 +338,10 @@ Extracted URLs:
                 },
                 "modules": added_modules,
                 "email_sample_count": len(analysis_data),
+                "has_spam_ham_analysis": (
+                    "spam_patterns" in formatted_data
+                    or "ham_patterns" in formatted_data
+                ),
             },
         }
 

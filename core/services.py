@@ -189,8 +189,8 @@ class SpamGenieService:
     def generate_prompt(
         rule_generation: RuleGeneration, email_files: Optional[List[EmailFile]] = None
     ) -> str:
-        """Generate a detailed prompt based on the RuleGeneration
-        object and associated email files."""
+        """Generate a detailed prompt based on the
+        RuleGeneration object and associated email files."""
         workspace = rule_generation.workspace
         selected_headers = workspace.selected_headers
         selected_modules = rule_generation.prompt_modules or []
@@ -200,35 +200,91 @@ class SpamGenieService:
         if email_files is None:
             email_files = workspace.email_files.all()
 
-        analysis_data = []
-        for email_file in email_files:
+        # Separate spam and ham emails
+        spam_email_files = [ef for ef in email_files if ef.email_type == EmailFile.SPAM]
+        ham_email_files = [ef for ef in email_files if ef.email_type == EmailFile.HAM]
+
+        # Process spam emails
+        spam_analysis_data = []
+        for email_file in spam_email_files:
             email_data = SpamGenieService.parse_email(email_file)
             filtered_data = {
                 "headers": {
                     k: email_data["headers"].get(k, "") for k in selected_headers
                 },
                 "body": email_data["body"],
+                "is_spam": True,  # Mark as spam
             }
-            analysis_data.append(filtered_data)
+            spam_analysis_data.append(filtered_data)
+
+        # Process ham emails
+        ham_analysis_data = []
+        for email_file in ham_email_files:
+            email_data = SpamGenieService.parse_email(email_file)
+            filtered_data = {
+                "headers": {
+                    k: email_data["headers"].get(k, "") for k in selected_headers
+                },
+                "body": email_data["body"],
+                "is_spam": False,  # Mark as ham
+            }
+            ham_analysis_data.append(filtered_data)
 
         # Enhance analysis data with additional patterns
-        enhanced_data = SpamGenieService._enhance_analysis_data(analysis_data)
+        enhanced_spam_data = (
+            SpamGenieService._enhance_analysis_data(spam_analysis_data)
+            if spam_analysis_data
+            else []
+        )
+        enhanced_ham_data = (
+            SpamGenieService._enhance_analysis_data(ham_analysis_data)
+            if ham_analysis_data
+            else []
+        )
 
-        # Extract common patterns and characteristics
-        common_patterns = SpamGenieService._extract_common_patterns(enhanced_data)
+        # Extract common patterns and characteristics for both types
+        spam_patterns = (
+            SpamGenieService._extract_common_patterns(enhanced_spam_data)
+            if enhanced_spam_data
+            else {}
+        )
+        ham_patterns = (
+            SpamGenieService._extract_common_patterns(enhanced_ham_data)
+            if enhanced_ham_data
+            else {}
+        )
 
-        # Add common patterns to the first email analysis for prompt building
-        if enhanced_data:
-            enhanced_data[0]["common_patterns"] = common_patterns
+        # Combine analysis data for prompt building
+        combined_data = []
+
+        # Add spam data with patterns
+        if enhanced_spam_data:
+            combined_data = enhanced_spam_data
+            if combined_data:
+                combined_data[0]["spam_patterns"] = spam_patterns
+
+        # Add ham data with patterns
+        if enhanced_ham_data:
+            if not combined_data and enhanced_ham_data:
+                combined_data = enhanced_ham_data
+                if combined_data:
+                    combined_data[0]["ham_patterns"] = ham_patterns
+            elif combined_data:
+                # If we already have spam data, add ham patterns to it
+                combined_data[0]["ham_patterns"] = ham_patterns
 
         # Use PromptManager to build the prompt
         prompt_data = PromptManager.build_prompt(
-            enhanced_data, selected_modules, base_prompt_id
+            combined_data, selected_modules, base_prompt_id
         )
 
         # Store metadata in rule_generation if it's not already set
         if not rule_generation.prompt_metadata:
-            rule_generation.prompt_metadata = prompt_data.get("metadata", {})
+            rule_generation.prompt_metadata = {
+                **(prompt_data.get("metadata", {})),
+                "spam_count": len(spam_email_files),
+                "ham_count": len(ham_email_files),
+            }
             rule_generation.save(update_fields=["prompt_metadata"])
 
         return prompt_data["prompt"]

@@ -282,6 +282,9 @@ class EmailFileViewSet(viewsets.ModelViewSet):
 
         file_obj = self.request.FILES.get("file")
         workspace_id = self.request.data.get("workspace")
+        email_type = self.request.data.get(
+            "email_type", EmailFile.SPAM
+        )  # Default to SPAM if not specified
 
         if file_obj:
             if not file_obj.name.lower().endswith(".eml"):
@@ -308,11 +311,12 @@ class EmailFileViewSet(viewsets.ModelViewSet):
                         "You don't have permission to upload files to this workspace."
                     )
 
-                # Save the EmailFile
+                # Save the EmailFile with the specified email type
                 serializer.save(
                     original_filename=file_obj.name,
                     uploaded_by=self.request.user,
                     workspace=workspace,
+                    email_type=email_type,
                 )
             except Workspace.DoesNotExist:
                 raise ValidationError({"workspace": "Workspace not found."})

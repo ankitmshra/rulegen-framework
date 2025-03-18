@@ -101,7 +101,8 @@ class Command(BaseCommand):
             name="Base SpamAssassin Rule Generation",
             defaults={
                 "is_base": True,
-                "description": "Minimalist prompt for generating basic SpamAssassin subrules",
+                "description": ("Minimalist prompt for generating basic SpamAssassin " +
+                                "subrules with spam vs ham analysis"),
                 "created_by": admin_user,
                 "visibility": PromptTemplate.GLOBAL,
                 "template": """
@@ -119,6 +120,8 @@ Email Body Samples:
 2. Each subrule must have a corresponding describe line
 3. Present each subrule in its own code block
 4. DO NOT create meta rules or assign scores
+5. When creating rules, prioritize patterns unique to spam emails and
+avoid patterns common in legitimate emails
 
 ## Basic Example:
 
@@ -151,6 +154,8 @@ Email Body Samples:
 2. Each subrule must have a corresponding describe line
 3. Present each subrule in its own code block
 4. DO NOT create meta rules or assign scores
+5. When creating rules, prioritize patterns unique to spam emails and avoid patterns common in
+legitimate emails
 
 ## Basic Example:
 

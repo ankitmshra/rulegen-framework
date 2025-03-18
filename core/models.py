@@ -105,6 +105,15 @@ class WorkspaceShare(models.Model):
 class EmailFile(models.Model):
     """Model to store uploaded email files."""
 
+    # Email type choices
+    SPAM = "spam"
+    HAM = "ham"
+
+    EMAIL_TYPE_CHOICES = [
+        (SPAM, "Spam"),
+        (HAM, "Ham (Not Spam)"),
+    ]
+
     workspace = models.ForeignKey(
         Workspace, on_delete=models.CASCADE, related_name="email_files"
     )
@@ -115,9 +124,12 @@ class EmailFile(models.Model):
     original_filename = models.CharField(max_length=255)
     uploaded_at = models.DateTimeField(default=timezone.now)
     processed = models.BooleanField(default=False)
+    email_type = models.CharField(
+        max_length=4, choices=EMAIL_TYPE_CHOICES, default=SPAM
+    )
 
     def __str__(self):
-        return f"{self.original_filename} - {self.workspace.name}"
+        return f"{self.original_filename} ({self.get_email_type_display()}) - {self.workspace.name}"
 
 
 class RuleGeneration(models.Model):
