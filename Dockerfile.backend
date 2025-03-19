@@ -25,14 +25,11 @@ COPY . /app/
 RUN mkdir -p /app/staticfiles
 RUN mkdir -p /app/media
 
+# Make the entrypoint script executable
+RUN chmod +x /app/entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
+
 # Expose the port
 EXPOSE 8000
-
-# Initialize the application
-# These will be run by an entrypoint script instead
-# RUN python manage.py collectstatic --noinput
-# RUN python manage.py migrate
-# RUN python setup.py --auto-setup
-
-# Command to run the application
-CMD ["gunicorn", "spamgenie.wsgi:application", "--bind", "0.0.0.0:8000"]

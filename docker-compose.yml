@@ -13,35 +13,16 @@ services:
       - ./db.sqlite3:/app/db.sqlite3
     env_file:
       - .env
-    depends_on:
-      - setup-app
     networks:
       - app-network
 
-  # Setup service for database initialization
-  setup-app:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    command: sh -c "python manage.py migrate && python manage.py collectstatic --noinput && python setup.py --auto-setup"
-    volumes:
-      - ./staticfiles:/app/staticfiles
-      - ./media:/app/media
-      - ./db.sqlite3:/app/db.sqlite3
-    env_file:
-      - .env
-    networks:
-      - app-network
-
-  # Frontend React build and deploy
-  frontend-build:
+  # Frontend React build
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     volumes:
-      - frontend-build:/app/build
-      - ./frontend/static/frontend/react:/app/deploy
-    command: sh -c "npm run deploy"
+      - ./staticfiles:/app/static
     networks:
       - app-network
 
@@ -57,13 +38,10 @@ services:
       - ./media:/var/www/media
     depends_on:
       - backend
-      - frontend-build
+      - frontend
     networks:
       - app-network
 
 networks:
   app-network:
     driver: bridge
-
-volumes:
-  frontend-build:

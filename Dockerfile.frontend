@@ -15,4 +15,10 @@ COPY frontend/react-app/ ./
 # Build the app
 RUN npm run build
 
-# The build output will be used by Nginx
+# Create the target directory structure for Django
+RUN mkdir -p /app/static/frontend/react
+
+# Copy the built files to the expected Django location
+RUN cp -r build/* /app/static/frontend/react/
+
+# No CMD needed as this is a build stage

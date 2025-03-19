@@ -9,7 +9,7 @@ const rimraf = require('rimraf');
 
 // Source and target directories
 const BUILD_DIR = path.resolve(__dirname, '../build');
-const TARGET_DIR = process.env.DEPLOY_DIR || path.resolve(__dirname, '../../deploy');
+const TARGET_DIR = path.resolve(__dirname, '../../static/frontend/react');
 
 // Check if build directory exists
 if (!fs.existsSync(BUILD_DIR)) {
