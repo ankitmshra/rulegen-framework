@@ -8,18 +8,20 @@ This script initializes the database with default data:
 3. Creates sample workspaces (optional)
 
 Usage:
-    python setup.py [--sample]
+    python setup.py [--sample] [--auto-setup]
 
 Options:
-    --sample    Include sample workspaces and data
+    --sample      Include sample workspaces and data
+    --auto-setup  Automatically set up with default values without prompting
 """
 
 import os
 import argparse
 import django
+import getpass
 
 
-def create_superuser():
+def create_superuser(auto_setup=False):
     """Create a superuser if one doesn't exist."""
     from django.contrib.auth.models import User
     from core.models import UserProfile
@@ -28,9 +30,21 @@ def create_superuser():
         print("Superuser already exists, skipping creation.")
         return User.objects.filter(is_superuser=True).first()
 
-    username = input("Enter superuser username [admin]: ") or "admin"
-    email = input("Enter superuser email [admin@example.com]: ") or "admin@example.com"
-    password = input("Enter superuser password [adminpassword]: ") or "adminpassword"
+    if auto_setup:
+        # Use default values for auto setup
+        username = "admin"
+        email = "admin@example.com"
+        password = "adminpassword"
+        print(f"Auto-creating superuser with username '{username}'")
+    else:
+        username = input("Enter superuser username [admin]: ") or "admin"
+        email = (
+            input("Enter superuser email [admin@example.com]: ") or "admin@example.com"
+        )
+        password = (
+            getpass.getpass("Enter superuser password [adminpassword]: ")
+            or "adminpassword"
+        )
 
     superuser = User.objects.create_superuser(
         username=username, email=email, password=password
@@ -128,13 +142,16 @@ def main():
 
     parser = argparse.ArgumentParser(description="Set up SpamGenie database.")
     parser.add_argument("--sample", action="store_true", help="Include sample data")
+    parser.add_argument(
+        "--auto-setup", action="store_true", help="Automatic setup with default values"
+    )
     args = parser.parse_args()
 
     print("Starting SpamGenie database setup...")
 
     with transaction.atomic():
         # Step 1: Create superuser
-        admin_user = create_superuser()
+        admin_user = create_superuser(args.auto_setup)
 
         # Step 2: Create prompt templates
         create_prompt_templates(admin_user)

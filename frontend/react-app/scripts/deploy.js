@@ -1,10 +1,6 @@
 /**
  * Deployment script for copying React build to Django static folder
- * 
- * This script:
- * 1. Cleans the target directory
- * 2. Copies the React build to the Django static folder
- * 3. Updates the asset paths for Django compatibility
+ * Adapted for Docker environment
  */
 
 const fs = require('fs');
@@ -13,7 +9,7 @@ const rimraf = require('rimraf');
 
 // Source and target directories
 const BUILD_DIR = path.resolve(__dirname, '../build');
-const TARGET_DIR = path.resolve(__dirname, '../../static/frontend/react');
+const TARGET_DIR = process.env.DEPLOY_DIR || path.resolve(__dirname, '../../deploy');
 
 // Check if build directory exists
 if (!fs.existsSync(BUILD_DIR)) {

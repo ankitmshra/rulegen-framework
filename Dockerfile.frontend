@@ -1,0 +1,18 @@
+FROM node:18-alpine as build
+
+# Set work directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY frontend/react-app/package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the React app
+COPY frontend/react-app/ ./
+
+# Build the app
+RUN npm run build
+
+# The build output will be used by Nginx
