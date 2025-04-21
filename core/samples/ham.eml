@@ -1,0 +1,110 @@
+Return-Path: <john.smith@gmail.com>
+Delivered-To: REMOVED@PERSONALDATA.org
+Received: from mail-wr1-f48.google.com (mail-wr1-f48.google.com [209.85.221.48])
+	by mx.PERSONALDATA.org (Postfix) with ESMTPS id A24B93E824
+	for <REMOVED@PERSONALDATA.org>; Wed, 19 Mar 2025 10:42:16 -0400 (EDT)
+Received: by mail-wr1-f48.google.com with SMTP id a18so12345678wra.1
+        for <REMOVED@PERSONALDATA.org>; Wed, 19 Mar 2025 07:42:15 -0700 (PDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20210112;
+        h=mime-version:date:from:to:subject:thread-topic:message-id;
+        bh=gY41xRpH3W7HjNZzxZPd1GPPz9mYkMV4GUiJbWO5X4s=;
+        b=LUbbA8mNWv1hxZ21YyQu6ZkCPdwxJqYweNkgbnhKvUaLH4d5hRJfsDkvmYD3JWr2M5
+         ZGcpRXk9aHuwhSQ2nH3fFgtOUklY456tg2qweTnYmvMVIJg1op1YF7p9RLFhkQlAEUB8
+         MWN2XCmDVLHoI5SfG9EbFY38kmvvY4gF9k5Nf7qFDgR0dXdx04fMC0pfqJF9VuKUQj8a
+         +OYQpsfRcDZw6uiN6rNkwzRa/r0TdZMw==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20210112;
+        h=mime-version:date:from:to:subject:thread-topic:message-id
+         :x-gm-message-state;
+        bh=gY41xRpH3W7HjNZzxZPd1GPPz9mYkMV4GUiJbWO5X4s=;
+        b=NEjsD9K8FGn9JYzaLVLnM5L5sMXK9pV3JVLGm5xZCLZQq7vVXqjQJQhHD8yLkD2Q5e
+         GHqgFQZMZrDHaUPYUJ34HqE8n5EoLYAjpPZXwsJu0ZWZB9GKklqiPfUVyQa1HfxLZQkg
+         SdDj1DfNzYPCQJfDaJQcDNbZs3KxTc8GlRSGfqNcwgd9uiNy78qO8e0QV8iiQjV9ORsD
+         IKH5TuGgtTYZbLgNYsmbkMnE6sDasxAY==
+X-Gm-Message-State: AOJu0YyfGvoIiR7gJKo9gN+3GMwgGb8zGU9wQj92LxTPdS3sBrUxcvws
+	LM2G8kGEX40JLpT9aI3g7JUBnZJ9q9bBd4Ks8w==
+X-Received: by 2002:a05:6000:1c01:b0:1cb:8e75:7ef1 with SMTP id z1-20020a05600001c0100b001cb8e757ef1mr12345678wmr.19.1711034535271;
+        Wed, 19 Mar 2025 07:42:15 -0700 (PDT)
+X-Google-Smtp-Source: AKmA7sgRXcpZ+NpVZR6/yqJ3+QF5/2v6Z/lTm2K6DsUt0d1A1TM8QC/8Nx+VgXQn1xXWWQ1G/JYh
+MIME-Version: 1.0
+From: John Smith <john.smith@gmail.com>
+Date: Wed, 19 Mar 2025 10:42:05 -0400
+To: REMOVED@PERSONALDATA.org
+Subject: Meeting Notes - Project Alpha
+Content-Type: multipart/alternative; boundary="00000000000028a5c9061fc2f8f0"
+Message-ID: <CAN_NAfJKvPaJpGfFKdZhXWpH+9t0JLFWBYutOUF2WQF52Q3vOw@mail.gmail.com>
+Thread-Topic: Meeting Notes - Project Alpha
+
+--00000000000028a5c9061fc2f8f0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Team,
+
+I wanted to share the notes from yesterday's meeting regarding Project Alpha.
+Here are the key points we discussed:
+
+1. Timeline update: We're on track to complete Phase 1 by April 15th
+2. Resource allocation: Sarah will join the team starting next week
+3. Budget review: We're currently 5% under budget
+4. Next steps: We need to finalize the documentation by Friday
+
+Please review and let me know if you have any questions or if I missed
+anything important.
+
+The next project meeting is scheduled for Monday, March 24th at 10:00 AM.
+Calendar invites have been sent.
+
+Best regards,
+John
+
+--
+John Smith
+Senior Project Manager
+Mobile: (555) 123-4567
+john.smith@gmail.com
+
+--00000000000028a5c9061fc2f8f0
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3DUTF-8">
+</head>
+<body>
+<div dir=3D"ltr">
+<p>Hi Team,</p>
+
+<p>I wanted to share the notes from yesterday's meeting regarding Project Alpha. Here are the key points we discussed:</p>
+
+<ol>
+  <li>Timeline update: We're on track to complete Phase 1 by April 15th</li>
+  <li>Resource allocation: Sarah will join the team starting next week</li>
+  <li>Budget review: We're currently 5% under budget</li>
+  <li>Next steps: We need to finalize the documentation by Friday</li>
+</ol>
+
+<p>Please review and let me know if you have any questions or if I missed anything important.</p>
+
+<p>The next project meeting is scheduled for Monday, March 24th at 10:00 AM. Calendar invites have been sent.</p>
+
+<p>Best regards,<br>
+John</p>
+
+<div>
+<hr>
+<p style=3D"font-size:90%; color:#777;">
+John Smith<br>
+Senior Project Manager<br>
+Mobile: (555) 123-4567<br>
+john.smith@gmail.com
+</p>
+</div>
+</div>
+</body>
+</html>
+
+--00000000000028a5c9061fc2f8f0--

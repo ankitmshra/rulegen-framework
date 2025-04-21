@@ -62,15 +62,11 @@ class Command(BaseCommand):
         if not admin_user:
             # Find users with admin profile
             try:
-                admin_profile = UserProfile.objects.filter(
-                    role=UserProfile.ADMIN
-                ).first()
+                admin_profile = UserProfile.objects.filter(role=UserProfile.ADMIN).first()
                 if admin_profile:
                     admin_user = admin_profile.user
                     self.stdout.write(
-                        self.style.SUCCESS(
-                            f"Using admin user '{admin_user.username}' as creator"
-                        )
+                        self.style.SUCCESS(f"Using admin user '{admin_user.username}' as creator")
                     )
                 else:
                     # If no admin profile found, try to use a superuser
@@ -101,8 +97,10 @@ class Command(BaseCommand):
             name="Base SpamAssassin Rule Generation",
             defaults={
                 "is_base": True,
-                "description": ("Minimalist prompt for generating basic SpamAssassin " +
-                                "subrules with spam vs ham analysis"),
+                "description": (
+                    "Minimalist prompt for generating basic SpamAssassin "
+                    + "subrules with spam vs ham analysis"
+                ),
                 "created_by": admin_user,
                 "visibility": PromptTemplate.GLOBAL,
                 "template": """
@@ -116,7 +114,7 @@ Email Body Samples:
 
 ## Core Requirements
 
-1. Create detection subrules that start with EXACTLY two underscores: `__RULE_NAME`
+1. Create detection subrules that start with EXACTLY "__BSF_": `__BSF_RULE_NAME`
 2. Each subrule must have a corresponding describe line
 3. Present each subrule in its own code block
 4. DO NOT create meta rules or assign scores
@@ -126,17 +124,15 @@ avoid patterns common in legitimate emails
 ## Basic Example:
 
 ```
-header   __SPAM_SUBJECT   Subject =~ /pattern/i
-describe __SPAM_SUBJECT   Subject line contains suspicious pattern
+header   __BSF_SPAM_SUBJECT   Subject =~ /pattern/i
+describe __BSF_SPAM_SUBJECT   Subject line contains suspicious pattern
 ```
 """,
             },
         )
 
         if created:
-            self.stdout.write(
-                self.style.SUCCESS(f"Created base prompt: {base_prompt.name}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Created base prompt: {base_prompt.name}"))
         else:
             # Update the template if it already exists
             base_prompt.template = """
@@ -150,7 +146,7 @@ Email Body Samples:
 
 ## Core Requirements
 
-1. Create detection subrules that start with EXACTLY two underscores: `__RULE_NAME`
+1. Create detection subrules that start with EXACTLY "__BSF_": `__BSF_RULE_NAME`
 2. Each subrule must have a corresponding describe line
 3. Present each subrule in its own code block
 4. DO NOT create meta rules or assign scores
@@ -160,8 +156,8 @@ legitimate emails
 ## Basic Example:
 
 ```
-header   __SPAM_SUBJECT   Subject =~ /pattern/i
-describe __SPAM_SUBJECT   Subject line contains suspicious pattern
+header   __BSF_SPAM_SUBJECT   Subject =~ /pattern/i
+describe __BSF_SPAM_SUBJECT   Subject line contains suspicious pattern
 ```
 """
             # Update creator if it's not set and we have an admin user
@@ -172,9 +168,7 @@ describe __SPAM_SUBJECT   Subject line contains suspicious pattern
             base_prompt.visibility = PromptTemplate.GLOBAL
 
             base_prompt.save()
-            self.stdout.write(
-                self.style.SUCCESS(f"Updated base prompt: {base_prompt.name}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Updated base prompt: {base_prompt.name}"))
 
         # Enhanced Scoring module
         scoring_module, created = PromptTemplate.objects.get_or_create(
@@ -192,7 +186,7 @@ Take the subrules from above and create meta rules that combine them, then assig
 
 1. **Meta Rule Creation**:
    ```
-   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   meta       RULE_NAME      (__BSF_SUBRULE1 && __BSF_SUBRULE2)
    describe   RULE_NAME      Combined rule description
    ```
 
@@ -216,9 +210,7 @@ Remember that scores are ONLY applied to meta rules, not to subrules.
             },
         )
         if created:
-            self.stdout.write(
-                self.style.SUCCESS(f"Created module: {scoring_module.name}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Created module: {scoring_module.name}"))
         else:
             # Update the template if it already exists
             scoring_module.template = """
@@ -228,7 +220,7 @@ Take the subrules from above and create meta rules that combine them, then assig
 
 1. **Meta Rule Creation**:
    ```
-   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   meta       RULE_NAME      (__BSF_SUBRULE1 && __BSF_SUBRULE2)
    describe   RULE_NAME      Combined rule description
    ```
 
@@ -275,7 +267,7 @@ Take the subrules from above and create effective meta rules by combining them:
 
 1. **Meta Rule Format**:
    ```
-   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   meta       RULE_NAME      (__BSF_SUBRULE1 && __BSF_SUBRULE2)
    describe   RULE_NAME      Combined rule description
    ```
 
@@ -292,16 +284,14 @@ Take the subrules from above and create effective meta rules by combining them:
 
 Example meta rule:
 ```
-meta       SUSPICIOUS_URL_COMBO   (__SUSP_URL_TLD && (__SHORT_URL || __REDIRECT_URL))
+meta       SUSPICIOUS_URL_COMBO   (__BSF_SUSP_URL_TLD && (__BSF_SHORT_URL || __BSF_REDIRECT_URL))
 describe   SUSPICIOUS_URL_COMBO   Combines multiple suspicious URL indicators
 ```
 """,
             },
         )
         if created:
-            self.stdout.write(
-                self.style.SUCCESS(f"Created module: {subrules_module.name}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Created module: {subrules_module.name}"))
         else:
             # Update the template if it already exists
             subrules_module.template = """
@@ -311,7 +301,7 @@ Take the subrules from above and create effective meta rules by combining them:
 
 1. **Meta Rule Format**:
    ```
-   meta       RULE_NAME      (__SUBRULE1 && __SUBRULE2)
+   meta       RULE_NAME      (__BSF_SUBRULE1 && __BSF_SUBRULE2)
    describe   RULE_NAME      Combined rule description
    ```
 
@@ -328,7 +318,7 @@ Take the subrules from above and create effective meta rules by combining them:
 
 Example meta rule:
 ```
-meta       SUSPICIOUS_URL_COMBO   (__SUSP_URL_TLD && (__SHORT_URL || __REDIRECT_URL))
+meta       SUSPICIOUS_URL_COMBO   (__BSF_SUSP_URL_TLD && (__BSF_SHORT_URL || __BSF_REDIRECT_URL))
 describe   SUSPICIOUS_URL_COMBO   Combines multiple suspicious URL indicators
 ```
 """
@@ -368,7 +358,7 @@ For the subrules and meta rules above, provide detailed explanations separated f
 
 3. **Example**:
 
-The `__SPAM_SUBJECT_1` rule targets emails with an explicit spam marker in the subject.
+The `__BSF_SPAM_SUBJECT_1` rule targets emails with an explicit spam marker in the subject.
 This pattern has very low false positive risk since
 legitimate emails rarely contain "[SPAM]" in the subject.
 
@@ -383,9 +373,7 @@ which is unlikely to occur in legitimate business communications.
             },
         )
         if created:
-            self.stdout.write(
-                self.style.SUCCESS(f"Created module: {notes_module.name}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Created module: {notes_module.name}"))
         else:
             # Update the template if it already exists
             notes_module.template = """
@@ -405,7 +393,7 @@ For the subrules and meta rules above, provide detailed explanations separated f
 
 3. **Example**:
 
-The `__SPAM_SUBJECT_1` rule targets emails with an explicit spam marker in the subject.
+The `__BSF_SPAM_SUBJECT_1` rule targets emails with an explicit spam marker in the subject.
 This pattern has very low false positive risk since
 legitimate emails rarely contain "[SPAM]" in the subject.
 
@@ -443,8 +431,8 @@ Create specialized subrules to detect suspicious URLs in the email data:
 
 1. **URI Rule Format**:
    ```
-   uri      __RULE_NAME      /pattern/i
-   describe __RULE_NAME      Description of URL pattern
+   uri      __BSF_RULE_NAME      /pattern/i
+   describe __BSF_RULE_NAME      Description of URL pattern
    ```
 
 2. **Effective Patterns to Target**:
@@ -458,13 +446,13 @@ Create specialized subrules to detect suspicious URLs in the email data:
 Examples:
 
 ```
-uri      __SUSP_TLD_BID     /\\.bid\\b/i
-describe __SUSP_TLD_BID     URL using suspicious .bid TLD
+uri      __BSF_SUSP_TLD_BID     /\\.bid\\b/i
+describe __BSF_SUSP_TLD_BID     URL using suspicious .bid TLD
 ```
 
 ```
-uri      __URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
-describe __URL_SHORTENER    URL using common shortening service
+uri      __BSF_URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
+describe __BSF_URL_SHORTENER    URL using common shortening service
 ```
 """,
             },
@@ -480,8 +468,8 @@ Create specialized subrules to detect suspicious URLs in the email data:
 
 1. **URI Rule Format**:
    ```
-   uri      __RULE_NAME      /pattern/i
-   describe __RULE_NAME      Description of URL pattern
+   uri      __BSF_RULE_NAME      /pattern/i
+   describe __BSF_RULE_NAME      Description of URL pattern
    ```
 
 2. **Effective Patterns to Target**:
@@ -495,13 +483,13 @@ Create specialized subrules to detect suspicious URLs in the email data:
 Examples:
 
 ```
-uri      __SUSP_TLD_BID     /\\.bid\\b/i
-describe __SUSP_TLD_BID     URL using suspicious .bid TLD
+uri      __BSF_SUSP_TLD_BID     /\\.bid\\b/i
+describe __BSF_SUSP_TLD_BID     URL using suspicious .bid TLD
 ```
 
 ```
-uri      __URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
-describe __URL_SHORTENER    URL using common shortening service
+uri      __BSF_URL_SHORTENER    /bit\\.ly|tinyurl\\.com/i
+describe __BSF_URL_SHORTENER    URL using common shortening service
 ```
 """
             # Update creator if it's not set and we have an admin user
@@ -530,8 +518,8 @@ Create specialized subrules to detect suspicious HTML patterns in the email:
 
 1. **HTML Rule Format**:
    ```
-   rawbody  __RULE_NAME      /pattern/i
-   describe __RULE_NAME      Description of HTML pattern
+   rawbody  __BSF_RULE_NAME      /pattern/i
+   describe __BSF_RULE_NAME      Description of HTML pattern
    ```
 
 2. **Effective Patterns to Target**:
@@ -545,13 +533,13 @@ Create specialized subrules to detect suspicious HTML patterns in the email:
 Examples:
 
 ```
-rawbody  __HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
-describe __HTML_HIDDEN_DIV  HTML with hidden div content
+rawbody  __BSF_HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
+describe __BSF_HTML_HIDDEN_DIV  HTML with hidden div content
 ```
 
 ```
-rawbody  __HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
-describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
+rawbody  __BSF_HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
+describe __BSF_HTML_INVISIBLE_TEXT  HTML with potentially invisible text
 ```
 """,
             },
@@ -567,8 +555,8 @@ Create specialized subrules to detect suspicious HTML patterns in the email:
 
 1. **HTML Rule Format**:
    ```
-   rawbody  __RULE_NAME      /pattern/i
-   describe __RULE_NAME      Description of HTML pattern
+   rawbody  __BSF_RULE_NAME      /pattern/i
+   describe __BSF_RULE_NAME      Description of HTML pattern
    ```
 
 2. **Effective Patterns to Target**:
@@ -582,13 +570,13 @@ Create specialized subrules to detect suspicious HTML patterns in the email:
 Examples:
 
 ```
-rawbody  __HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
-describe __HTML_HIDDEN_DIV  HTML with hidden div content
+rawbody  __BSF_HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
+describe __BSF_HTML_HIDDEN_DIV  HTML with hidden div content
 ```
 
 ```
-rawbody  __HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
-describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
+rawbody  __BSF_HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
+describe __BSF_HTML_INVISIBLE_TEXT  HTML with potentially invisible text
 ```
 """
             # Update creator if it's not set and we have an admin user
@@ -609,7 +597,5 @@ describe __HTML_INVISIBLE_TEXT  HTML with potentially invisible text
             )
         else:
             self.stdout.write(
-                self.style.SUCCESS(
-                    "Prompt templates initialization complete. No creator assigned."
-                )
+                self.style.SUCCESS("Prompt templates initialization complete. No creator assigned.")
             )

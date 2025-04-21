@@ -4,12 +4,14 @@ Services for processing email files and generating SpamAssassin rules.
 
 from .prompt_manager import PromptManager
 import re
-import requests
+import datetime
+import jwt
 from typing import List, Dict, Any, Optional
 import email.message
 from email import policy
 from django.conf import settings
 from .models import EmailFile, RuleGeneration
+from openai import AzureOpenAI
 
 
 class SpamGenieService:
@@ -130,16 +132,12 @@ class SpamGenieService:
             patterns["body_patterns"]["url_patterns"].extend(urls)
 
             # Extract common phrases
-            phrases = SpamGenieService._extract_common_phrases(
-                mail_data["body"].get("plain", "")
-            )
+            phrases = SpamGenieService._extract_common_phrases(mail_data["body"].get("plain", ""))
             patterns["body_patterns"]["common_phrases"].extend(phrases)
 
             # Analyze HTML formatting
             if mail_data["body"].get("html"):
-                formatting = SpamGenieService._analyze_html_formatting(
-                    mail_data["body"]["html"]
-                )
+                formatting = SpamGenieService._analyze_html_formatting(mail_data["body"]["html"])
                 patterns["body_patterns"]["formatting_patterns"].append(formatting)
 
         return patterns
@@ -178,9 +176,7 @@ class SpamGenieService:
             data["extracted"] = {
                 "urls": urls,
                 "domains": domains,
-                "html_analysis": SpamGenieService._analyze_html_formatting(
-                    html_content
-                ),
+                "html_analysis": SpamGenieService._analyze_html_formatting(html_content),
             }
 
         return analysis_data
@@ -209,9 +205,7 @@ class SpamGenieService:
         for email_file in spam_email_files:
             email_data = SpamGenieService.parse_email(email_file)
             filtered_data = {
-                "headers": {
-                    k: email_data["headers"].get(k, "") for k in selected_headers
-                },
+                "headers": {k: email_data["headers"].get(k, "") for k in selected_headers},
                 "body": email_data["body"],
                 "is_spam": True,  # Mark as spam
             }
@@ -222,9 +216,7 @@ class SpamGenieService:
         for email_file in ham_email_files:
             email_data = SpamGenieService.parse_email(email_file)
             filtered_data = {
-                "headers": {
-                    k: email_data["headers"].get(k, "") for k in selected_headers
-                },
+                "headers": {k: email_data["headers"].get(k, "") for k in selected_headers},
                 "body": email_data["body"],
                 "is_spam": False,  # Mark as ham
             }
@@ -237,9 +229,7 @@ class SpamGenieService:
             else []
         )
         enhanced_ham_data = (
-            SpamGenieService._enhance_analysis_data(ham_analysis_data)
-            if ham_analysis_data
-            else []
+            SpamGenieService._enhance_analysis_data(ham_analysis_data) if ham_analysis_data else []
         )
 
         # Extract common patterns and characteristics for both types
@@ -274,9 +264,7 @@ class SpamGenieService:
                 combined_data[0]["ham_patterns"] = ham_patterns
 
         # Use PromptManager to build the prompt
-        prompt_data = PromptManager.build_prompt(
-            combined_data, selected_modules, base_prompt_id
-        )
+        prompt_data = PromptManager.build_prompt(combined_data, selected_modules, base_prompt_id)
 
         # Store metadata in rule_generation if it's not already set
         if not rule_generation.prompt_metadata:
@@ -290,39 +278,68 @@ class SpamGenieService:
         return prompt_data["prompt"]
 
     @staticmethod
-    def query_gemini(prompt: str) -> str:
-        """Query Gemini API to generate SpamAssassin rules."""
-        api_key = settings.GEMINI_API_KEY
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set!")
+    def get_openai_client():
+        """Initialize and return an OpenAI client."""
+        team_private_key = settings.TEAM_PRIVATE_KEY
+        if not team_private_key:
+            raise ValueError("TEAM_PRIVATE_KEY environment variable not set!")
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models"
-            f"/gemini-1.5-flash:generateContent?key={api_key}"
-        )
-
+        # Generate JWT token for authentication
+        now = datetime.datetime.now(datetime.UTC)
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.2,  # Lower temperature for more precise rule generation
-                "topP": 0.9,
-                "maxOutputTokens": 8000,
-            },
+            "iss": "low",  # Team name as defined in your OpenAI account
+            "kid": "1",  # Key ID, should be 1 unless revoked and new keys issued
+            "iat": now.timestamp(),  # Issued at time
+            "nbf": now.timestamp(),  # Not before time
+            "exp": (now + datetime.timedelta(hours=1)).timestamp(),  # Expiration
+            "session_token": f"session_{now.timestamp()}",  # Session tracking token
         }
+        encoded = jwt.encode(payload, team_private_key, algorithm="PS256")
 
+        # Create and return Azure OpenAI client
+        client = AzureOpenAI(
+            api_version=settings.OPENAI_API_VERSION,
+            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+            azure_ad_token=encoded,
+        )
+        return client
+
+    @staticmethod
+    def query_openai(prompt: str) -> str:
+        """Query OpenAI API to generate SpamAssassin rules."""
         try:
-            response = requests.post(url, json=payload)
-            response.raise_for_status()
-            result = response.json()
+            client = SpamGenieService.get_openai_client()
+
+            # Set up messages for the chat completion
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a SpamAssassin expert AI that generates "
+                        + "effective and accurate rule sets."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ]
+
+            # Create the completion with the appropriate model
+            completion = client.chat.completions.create(
+                messages=messages,
+                model=settings.OPENAI_MODEL_NAME,
+                temperature=0.2,  # Lower temperature for more precise rule generation
+                max_tokens=8000,
+            )
 
             # Extract the generated text from the response
-            generated_text = result["candidates"][0]["content"]["parts"][0]["text"]
+            generated_text = completion.choices[0].message.content
 
             return generated_text
-        except requests.RequestException as e:
-            raise Exception(f"Error querying Gemini API: {str(e)}")
-        except (KeyError, IndexError) as e:
-            raise Exception(f"Error parsing Gemini API response: {str(e)}")
+
+        except Exception as e:
+            import logging
+
+            logging.error(f"Error querying OpenAI API: {str(e)}")
+            raise Exception(f"Error querying OpenAI API: {str(e)}")
 
     @staticmethod
     def process_rule_generation(rule_generation_id: int) -> Dict[str, Any]:
@@ -338,8 +355,8 @@ class SpamGenieService:
                 rule_generation.prompt = prompt
                 rule_generation.save()
 
-            # Query Gemini API
-            rule = SpamGenieService.query_gemini(rule_generation.prompt)
+            # Query OpenAI API instead of Gemini
+            rule = SpamGenieService.query_openai(rule_generation.prompt)
 
             # Update the rule generation
             rule_generation.rule = rule
@@ -364,7 +381,5 @@ class SpamGenieService:
         except Exception as e:
             import logging
 
-            logging.error(
-                f"Error processing rule generation {rule_generation_id}: {str(e)}"
-            )
+            logging.error(f"Error processing rule generation {rule_generation_id}: {str(e)}")
             return {"success": False, "error": str(e)}
