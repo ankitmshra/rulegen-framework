@@ -92,41 +92,81 @@ class Command(BaseCommand):
                     )
                 )
 
-        # Base prompt - minimalist with core instructions only
+        # Base prompt - updated with integrated HTML guidelines
         base_prompt, created = PromptTemplate.objects.get_or_create(
             name="Base SpamAssassin Rule Generation",
             defaults={
                 "is_base": True,
                 "description": (
-                    "Minimalist prompt for generating basic SpamAssassin "
-                    + "subrules with spam vs ham analysis"
+                    "Comprehensive prompt for generating SpamAssassin "
+                    + "rules with integrated HTML pattern guidelines"
                 ),
                 "created_by": admin_user,
                 "visibility": PromptTemplate.GLOBAL,
                 "template": """
-As a SpamAssassin expert, analyze this spam email data and create effective detection subrules.
+Create SpamAssassin detection rules based on this email analysis:
 
-SPAM EMAIL ANALYSIS:
+HEADERS:
 {HEADERS}
 
-Email Body Samples:
+BODY:
 {EMAIL_BODY}
 
-## Core Requirements
+## RULE FORMATS - FOLLOW EXACTLY:
 
-1. Create detection subrules that start with EXACTLY "__BSF_": `__BSF_RULE_NAME`
-2. Each subrule must have a corresponding describe line
-3. Present each subrule in its own code block
-4. DO NOT create meta rules or assign scores
-5. When creating rules, prioritize patterns unique to spam emails and
-avoid patterns common in legitimate emails
+1. Header patterns:
+```
+header   __BSF_RULE_NAME   Header =~ /pattern/i
+describe __BSF_RULE_NAME   Description
+```
 
-## Basic Example:
+2. Body text patterns (text content only):
+```
+body     __BSF_RULE_NAME   /text-pattern/i
+describe __BSF_RULE_NAME   Description
+```
+
+3. HTML patterns (CRITICAL - ALWAYS use rawbody):
+```
+rawbody  __BSF_HTML_RULE_NAME   /html-pattern/i
+describe __BSF_HTML_RULE_NAME   Description
+```
+
+4. URL patterns:
+```
+uri      __BSF_RULE_NAME   /url-pattern/i
+describe __BSF_RULE_NAME   Description
+```
+
+## HTML PATTERN GUIDELINES:
+
+CRITICAL: For ANY pattern targeting HTML elements, tags, or attributes, ALWAYS use 'rawbody', NEVER 'body'
+
+Examples of HTML patterns (always use rawbody):
+```
+rawbody  __BSF_HTML_HIDDEN_DIV      /<div[^>]+style=["']display:\\s*none["']/i
+describe __BSF_HTML_HIDDEN_DIV      HTML with hidden div content
+```
 
 ```
-header   __BSF_SPAM_SUBJECT   Subject =~ /pattern/i
-describe __BSF_SPAM_SUBJECT   Subject line contains suspicious pattern
+rawbody  __BSF_HTML_COLOR_TRICK     /<span[^>]+style=["']color:\\s*white["']/i
+describe __BSF_HTML_COLOR_TRICK     HTML with text-color obfuscation
 ```
+
+Common HTML spam techniques to target:
+- Hidden elements (display:none, visibility:hidden)
+- Color obfuscation (white text on white background)
+- Styled containers for phishing links
+- Hidden spam keywords via CSS
+- Tracking pixels or tiny images
+- JavaScript or embedded scripts
+
+## REQUIREMENTS:
+- All rule names MUST start with "__BSF_"
+- Present each rule in its own code block
+- For HTML patterns, ALWAYS use 'rawbody', NEVER 'body'
+- Prefix HTML-specific rule names with "__BSF_HTML_"
+- Prioritize patterns unique to spam
 """,
             },
         )
@@ -136,29 +176,69 @@ describe __BSF_SPAM_SUBJECT   Subject line contains suspicious pattern
         else:
             # Update the template if it already exists
             base_prompt.template = """
-As a SpamAssassin expert, analyze this spam email data and create effective detection subrules.
+Create SpamAssassin detection rules based on this email analysis:
 
-SPAM EMAIL ANALYSIS:
+HEADERS:
 {HEADERS}
 
-Email Body Samples:
+BODY:
 {EMAIL_BODY}
 
-## Core Requirements
+## RULE FORMATS - FOLLOW EXACTLY:
 
-1. Create detection subrules that start with EXACTLY "__BSF_": `__BSF_RULE_NAME`
-2. Each subrule must have a corresponding describe line
-3. Present each subrule in its own code block
-4. DO NOT create meta rules or assign scores
-5. When creating rules, prioritize patterns unique to spam emails and avoid patterns common in
-legitimate emails
+1. Header patterns:
+```
+header   __BSF_RULE_NAME   Header =~ /pattern/i
+describe __BSF_RULE_NAME   Description
+```
 
-## Basic Example:
+2. Body text patterns (text content only):
+```
+body     __BSF_RULE_NAME   /text-pattern/i
+describe __BSF_RULE_NAME   Description
+```
+
+3. HTML patterns (CRITICAL - ALWAYS use rawbody):
+```
+rawbody  __BSF_HTML_RULE_NAME   /html-pattern/i
+describe __BSF_HTML_RULE_NAME   Description
+```
+
+4. URL patterns:
+```
+uri      __BSF_RULE_NAME   /url-pattern/i
+describe __BSF_RULE_NAME   Description
+```
+
+## HTML PATTERN GUIDELINES:
+
+CRITICAL: For ANY pattern targeting HTML elements, tags, or attributes, ALWAYS use 'rawbody', NEVER 'body'
+
+Examples of HTML patterns (always use rawbody):
+```
+rawbody  __BSF_HTML_HIDDEN_DIV      /<div[^>]+style=["']display:\\s*none["']/i
+describe __BSF_HTML_HIDDEN_DIV      HTML with hidden div content
+```
 
 ```
-header   __BSF_SPAM_SUBJECT   Subject =~ /pattern/i
-describe __BSF_SPAM_SUBJECT   Subject line contains suspicious pattern
+rawbody  __BSF_HTML_COLOR_TRICK     /<span[^>]+style=["']color:\\s*white["']/i
+describe __BSF_HTML_COLOR_TRICK     HTML with text-color obfuscation
 ```
+
+Common HTML spam techniques to target:
+- Hidden elements (display:none, visibility:hidden)
+- Color obfuscation (white text on white background)
+- Styled containers for phishing links
+- Hidden spam keywords via CSS
+- Tracking pixels or tiny images
+- JavaScript or embedded scripts
+
+## REQUIREMENTS:
+- All rule names MUST start with "__BSF_"
+- Present each rule in its own code block
+- For HTML patterns, ALWAYS use 'rawbody', NEVER 'body'
+- Prefix HTML-specific rule names with "__BSF_HTML_"
+- Prioritize patterns unique to spam
 """
             # Update creator if it's not set and we have an admin user
             if not base_prompt.created_by and admin_user:
@@ -184,7 +264,7 @@ describe __BSF_SPAM_SUBJECT   Subject line contains suspicious pattern
 
 Take the subrules from above and create meta rules that combine them, then assign scores:
 
-1. **Meta Rule Creation**:
+1. **Meta Rule Format**:
    ```
    meta       RULE_NAME      (__BSF_SUBRULE1 && __BSF_SUBRULE2)
    describe   RULE_NAME      Combined rule description
@@ -218,7 +298,7 @@ Remember that scores are ONLY applied to meta rules, not to subrules.
 
 Take the subrules from above and create meta rules that combine them, then assign scores:
 
-1. **Meta Rule Creation**:
+1. **Meta Rule Format**:
    ```
    meta       RULE_NAME      (__BSF_SUBRULE1 && __BSF_SUBRULE2)
    describe   RULE_NAME      Combined rule description
@@ -502,92 +582,19 @@ describe __BSF_URL_SHORTENER    URL using common shortening service
             uri_module.save()
             self.stdout.write(f"Updated module: {uri_module.name}")
 
-        # HTML Content module
-        html_module, created = PromptTemplate.objects.get_or_create(
-            name="HTML Content Module",
-            defaults={
-                "is_module": True,
-                "module_type": "html",
-                "description": "Adds rules for detecting suspicious HTML content",
-                "created_by": admin_user,
-                "visibility": PromptTemplate.GLOBAL,
-                "template": """
-### HTML Content Detection Rules
-
-Create specialized subrules to detect suspicious HTML patterns in the email:
-
-1. **HTML Rule Format**:
-   ```
-   rawbody  __BSF_RULE_NAME      /pattern/i
-   describe __BSF_RULE_NAME      Description of HTML pattern
-   ```
-
-2. **Effective Patterns to Target**:
-   - Hidden content (display:none, visibility:hidden)
-   - Image-only emails
-   - Excessive obfuscation techniques
-   - Malformed HTML that might trick rendering
-   - Scripts or other active content
-   - Text/background color tricks
-
-Examples:
-
-```
-rawbody  __BSF_HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
-describe __BSF_HTML_HIDDEN_DIV  HTML with hidden div content
-```
-
-```
-rawbody  __BSF_HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
-describe __BSF_HTML_INVISIBLE_TEXT  HTML with potentially invisible text
-```
-""",
-            },
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"Created module: {html_module.name}"))
-        else:
-            # Update the template if it already exists
-            html_module.template = """
-### HTML Content Detection Rules
-
-Create specialized subrules to detect suspicious HTML patterns in the email:
-
-1. **HTML Rule Format**:
-   ```
-   rawbody  __BSF_RULE_NAME      /pattern/i
-   describe __BSF_RULE_NAME      Description of HTML pattern
-   ```
-
-2. **Effective Patterns to Target**:
-   - Hidden content (display:none, visibility:hidden)
-   - Image-only emails
-   - Excessive obfuscation techniques
-   - Malformed HTML that might trick rendering
-   - Scripts or other active content
-   - Text/background color tricks
-
-Examples:
-
-```
-rawbody  __BSF_HTML_HIDDEN_DIV  /<div[^>]+style=["']display:\\s*none["']/i
-describe __BSF_HTML_HIDDEN_DIV  HTML with hidden div content
-```
-
-```
-rawbody  __BSF_HTML_INVISIBLE_TEXT  /<span[^>]+style=["']color:\\s*white["']/i
-describe __BSF_HTML_INVISIBLE_TEXT  HTML with potentially invisible text
-```
-"""
-            # Update creator if it's not set and we have an admin user
-            if not html_module.created_by and admin_user:
-                html_module.created_by = admin_user
-
-            # Ensure global visibility
-            html_module.visibility = PromptTemplate.GLOBAL
-
-            html_module.save()
-            self.stdout.write(f"Updated module: {html_module.name}")
+        # Handle the HTML Content module - delete it as requested
+        try:
+            html_module = PromptTemplate.objects.get(name="HTML Content Module")
+            html_module.delete()
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "Deleted HTML Content Module as its functionality has been integrated into the base prompt"
+                )
+            )
+        except PromptTemplate.DoesNotExist:
+            self.stdout.write(
+                self.style.WARNING("HTML Content Module not found, no need to delete")
+            )
 
         if admin_user:
             self.stdout.write(
