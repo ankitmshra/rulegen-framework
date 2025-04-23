@@ -155,17 +155,24 @@ const RuleGeneration = ({ workspace }) => {
   }, [workspace]);
 
   // Handle email file upload success
-  const handleEmailUploadSuccess = async (newFiles) => {
+  const handleEmailUploadSuccess = async (newFiles, updatedFilesAfterDeletion) => {
     try {
-      // Update email files list
-      setEmailFiles([...newFiles, ...emailFiles]);
+      // If updated files list is provided (after deletion), use that
+      if (updatedFilesAfterDeletion) {
+        setEmailFiles(updatedFilesAfterDeletion);
+      } else {
+        // Otherwise add the new files to the existing list
+        setEmailFiles([...newFiles, ...emailFiles]);
+      }
       
       // Fetch available headers
       const headersResponse = await emailFileAPI.getAvailableHeaders(workspace.id);
       setAvailableHeaders(headersResponse.data);
       
-      // Move to headers step
-      setActiveStep('headers');
+      // Only move to headers step if this was an upload, not a deletion
+      if (newFiles.length > 0 && !updatedFilesAfterDeletion) {
+        setActiveStep('headers');
+      }
     } catch (err) {
       console.error('Error processing uploaded files:', err);
       setError('Failed to process uploaded files');
@@ -221,11 +228,15 @@ const RuleGeneration = ({ workspace }) => {
       setIsGeneratingRule(true);
       setRuleError(null);
 
+      // Determine if this is a regeneration (if we already have rules for this workspace)
+      const isRegeneration = generatedRules.length > 0;
+
       const response = await ruleGenerationAPI.create({
         workspace: workspace.id,
         prompt: generatedPrompt,
         prompt_modules: selectedModules,
-        base_prompt_id: selectedBasePrompt
+        base_prompt_id: selectedBasePrompt,
+        is_regeneration: isRegeneration
       });
 
       // Add new rule to the beginning of the list
@@ -265,6 +276,11 @@ const RuleGeneration = ({ workspace }) => {
       setRuleError('Failed to get rule status: ' + (err.response?.data?.error || err.message));
       setIsGeneratingRule(false);
     }
+  };
+
+  // Handle prompt update
+  const handlePromptUpdate = (updatedPrompt) => {
+    setGeneratedPrompt(updatedPrompt);
   };
 
   // Clickable step indicator component
@@ -451,6 +467,7 @@ const RuleGeneration = ({ workspace }) => {
             isGenerating={isGeneratingRule}
             error={ruleError}
             onBack={() => setActiveStep('prompt')}
+            onPromptUpdate={handlePromptUpdate}
           />
         )}
       </div>

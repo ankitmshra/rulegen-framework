@@ -1,19 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { marked } from 'marked';
-import hljs from 'highlight.js';
-import 'highlight.js/styles/github.css';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import DownloadModal from './DownloadModal';
-
-// Initialize marked with syntax highlighting
-marked.setOptions({
-  highlight: function (code, lang) {
-    try {
-      return hljs.highlight(code, { language: lang || 'plaintext' }).value;
-    } catch (e) {
-      return hljs.highlight(code, { language: 'plaintext' }).value;
-    }
-  }
-});
 
 const RuleViewer = ({
   generatedPrompt,
@@ -23,17 +12,33 @@ const RuleViewer = ({
   onGenerateRule,
   isGenerating,
   error,
-  onBack
+  onBack,
+  onPromptUpdate
 }) => {
   const [promptVisible, setPromptVisible] = useState(false);
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState(generatedPrompt);
   const [copySuccess, setCopySuccess] = useState('');
   const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const ruleContainerRef = useRef(null);
+  const [copiedBlocks, setCopiedBlocks] = useState({});
 
-  // Create HTML from markdown
-  const createMarkdown = (content) => {
-    if (!content) return '<p>No content available</p>';
-    return marked(content);
+  // Update editedPrompt when generatedPrompt changes
+  useEffect(() => {
+    setEditedPrompt(generatedPrompt);
+  }, [generatedPrompt]);
+
+  // Handle prompt edit save
+  const handleSavePrompt = () => {
+    if (onPromptUpdate) {
+      onPromptUpdate(editedPrompt);
+    }
+    setIsEditingPrompt(false);
+  };
+
+  // Handle prompt edit cancel
+  const handleCancelEdit = () => {
+    setEditedPrompt(generatedPrompt);
+    setIsEditingPrompt(false);
   };
 
   // Copy rule to clipboard
@@ -116,12 +121,102 @@ const RuleViewer = ({
   const currentRule = rules[currentRuleIndex] || {};
   const isRuleComplete = currentRule.is_complete;
 
-  // Update marked container when rule changes
-  useEffect(() => {
-    if (ruleContainerRef.current && currentRule.rule) {
-      ruleContainerRef.current.innerHTML = createMarkdown(currentRule.rule);
-    }
-  }, [currentRule]);
+  // Handle code block copy
+  const handleCodeBlockCopy = (code) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopySuccess('Copied!');
+      setTimeout(() => {
+        setCopySuccess('');
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy: ', err);
+    });
+  };
+
+  // Custom renderer for code blocks with copy button
+  const CodeBlock = ({language, value}) => {
+    return (
+      <div className="code-block-container">
+        <button 
+          onClick={() => handleCodeBlockCopy(value)}
+          className="copy-button"
+          aria-label="Copy code"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+        <SyntaxHighlighter
+          language={language}
+          style={vscDarkPlus}
+          showLineNumbers={false}
+          wrapLines={true}
+          wrapLongLines={true}
+          customStyle={{
+            backgroundColor: '#f1f5f9',
+            padding: '0.75rem',
+            paddingBottom: '0.25rem',
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            color: '#334155',
+            margin: 0
+          }}
+          codeTagProps={{
+            style: {
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap'
+            }
+          }}
+        >
+          {value}
+        </SyntaxHighlighter>
+      </div>
+    );
+  };
+
+  // Function to render markdown content with custom components
+  const renderMarkdown = (content) => {
+    return (
+      <div className="markdown-content">
+        <ReactMarkdown
+          children={content}
+          components={{
+            code({node, inline, className, children, ...props}) {
+              if (inline) {
+                return <code className="inline-code" {...props}>{children}</code>;
+              }
+              const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : '';
+              const value = String(children).replace(/\n$/, '');
+              return <CodeBlock language={language} value={value} />;
+            },
+            h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-6 mb-3" {...props} />,
+            h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-5 mb-2" {...props} />,
+            h3: ({node, ...props}) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
+            h4: ({node, ...props}) => <h4 className="text-base font-bold mt-3 mb-1" {...props} />,
+            p: ({node, ...props}) => <p className="my-2" {...props} />,
+            ul: ({node, ...props}) => <ul className="list-disc pl-5 my-2" {...props} />,
+            ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-2" {...props} />,
+            li: ({node, ...props}) => <li className="my-1" {...props} />,
+            blockquote: ({node, ...props}) => (
+              <blockquote className="border-l-4 border-gray-300 pl-4 my-2 italic" {...props} />
+            ),
+            hr: ({node, ...props}) => <hr className="my-4 border-gray-300" {...props} />,
+            table: ({node, ...props}) => (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-300" {...props} />
+              </div>
+            ),
+            th: ({node, ...props}) => (
+              <th className="px-4 py-2 bg-gray-100 font-semibold text-left" {...props} />
+            ),
+            td: ({node, ...props}) => <td className="px-4 py-2 border-t" {...props} />,
+          }}
+        />
+      </div>
+    );
+  };
 
   return (
     <div className="px-6 py-5">
@@ -146,13 +241,19 @@ const RuleViewer = ({
           <div>
             <h3 className="text-lg leading-6 font-medium text-gray-900">
               {rules.length > 0
-                ? `Rule ${currentRuleIndex + 1} of ${rules.length}`
+                ? `Rule ${rules.length - currentRuleIndex}/${rules.length}`
                 : 'No Rules Generated'}
             </h3>
             {currentRule.created_at && (
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                Generated: {formatDate(currentRule.created_at)}
-              </p>
+              <div className="mt-1 max-w-2xl text-sm text-gray-500">
+                <p>Generated: {formatDate(currentRule.created_at)}</p>
+                {currentRule.user && (
+                  <p>Initiated by: {currentRule.user}</p>
+                )}
+                {currentRule.is_regeneration && (
+                  <p className="text-indigo-600">Regenerated rule</p>
+                )}
+              </div>
             )}
           </div>
 
@@ -190,11 +291,48 @@ const RuleViewer = ({
         {/* Prompt Collapsible Section */}
         {promptVisible && (
           <div className="px-4 py-5 sm:p-6 border-b border-gray-200">
-            <h4 className="text-sm font-medium text-gray-900 mb-3">Generated Prompt</h4>
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-sm font-medium text-gray-900">Generated Prompt</h4>
+              {!isEditingPrompt ? (
+                <button
+                  onClick={() => setIsEditingPrompt(true)}
+                  className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
+                >
+                  <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Edit Prompt
+                </button>
+              ) : (
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleSavePrompt}
+                    className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="bg-gray-50 p-4 rounded-md">
-              <pre className="text-xs text-gray-800 whitespace-pre-wrap font-mono overflow-auto max-h-60">
-                {generatedPrompt}
-              </pre>
+              {isEditingPrompt ? (
+                <textarea
+                  value={editedPrompt}
+                  onChange={(e) => setEditedPrompt(e.target.value)}
+                  className="w-full h-64 p-2 text-sm font-mono border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Edit your prompt here..."
+                />
+              ) : (
+                <div className="prose prose-sm max-w-none max-h-64 overflow-y-auto">
+                  {renderMarkdown(generatedPrompt)}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -230,11 +368,8 @@ const RuleViewer = ({
               </p>
             </div>
           ) : (
-            <div
-              ref={ruleContainerRef}
-              className="prose prose-sm max-w-none text-gray-900 overflow-auto max-h-96"
-            >
-              {/* This will be populated by the marked renderer */}
+            <div className="prose prose-sm max-w-none max-h-96 overflow-y-auto pr-2">
+              {renderMarkdown(currentRule.rule)}
             </div>
           )}
         </div>
@@ -244,9 +379,9 @@ const RuleViewer = ({
           <div className="px-4 py-3 bg-gray-50 text-right sm:px-6 flex justify-between items-center">
             <div className="flex space-x-2">
               <button
-                onClick={() => onRuleIndexChange(0)}
-                disabled={currentRuleIndex === 0}
-                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                onClick={() => onRuleIndexChange(rules.length - 1)}
+                disabled={currentRuleIndex === rules.length - 1}
+                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === rules.length - 1 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
               >
                 <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -254,9 +389,9 @@ const RuleViewer = ({
                 </svg>
               </button>
               <button
-                onClick={() => onRuleIndexChange(currentRuleIndex - 1)}
-                disabled={currentRuleIndex === 0}
-                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                onClick={() => onRuleIndexChange(currentRuleIndex + 1)}
+                disabled={currentRuleIndex === rules.length - 1}
+                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === rules.length - 1 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
               >
                 <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -266,14 +401,14 @@ const RuleViewer = ({
             </div>
 
             <span className="text-sm text-gray-700">
-              Rule {currentRuleIndex + 1} of {rules.length}
+              Rule {rules.length - currentRuleIndex} of {rules.length}
             </span>
 
             <div className="flex space-x-2">
               <button
-                onClick={() => onRuleIndexChange(currentRuleIndex + 1)}
-                disabled={currentRuleIndex === rules.length - 1}
-                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === rules.length - 1 ? 'opacity-50 cursor-not-allowed' : ''
+                onClick={() => onRuleIndexChange(currentRuleIndex - 1)}
+                disabled={currentRuleIndex === 0}
+                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
               >
                 <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -281,9 +416,9 @@ const RuleViewer = ({
                 </svg>
               </button>
               <button
-                onClick={() => onRuleIndexChange(rules.length - 1)}
-                disabled={currentRuleIndex === rules.length - 1}
-                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === rules.length - 1 ? 'opacity-50 cursor-not-allowed' : ''
+                onClick={() => onRuleIndexChange(0)}
+                disabled={currentRuleIndex === 0}
+                className={`inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500 ${currentRuleIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
               >
                 <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">

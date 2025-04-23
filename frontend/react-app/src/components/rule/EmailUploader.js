@@ -2,11 +2,54 @@ import React, { useState, useRef } from 'react';
 import { emailFileAPI } from '../../services/api';
 
 const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue }) => {
-  const [selectedFiles, setSelectedFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [currentUploadCount, setCurrentUploadCount] = useState(0);
+  const [totalUploadCount, setTotalUploadCount] = useState(0);
   const fileInputRef = useRef(null);
+
+  const uploadFiles = async (files) => {
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    setError(null);
+    setUploadProgress(0);
+    setTotalUploadCount(files.length);
+    setCurrentUploadCount(0);
+
+    const uploadedFiles = [];
+    const totalFiles = files.length;
+    
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('workspace', workspaceId);
+        
+        const response = await emailFileAPI.upload(formData);
+        uploadedFiles.push(response.data);
+        
+        // Update progress
+        const progress = Math.round(((i + 1) / totalFiles) * 100);
+        setUploadProgress(progress);
+        setCurrentUploadCount(i + 1);
+      }
+      
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
+      onUploadSuccess(uploadedFiles);
+    } catch (err) {
+      console.error('Error uploading files:', err);
+      setError('Failed to upload files: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -17,7 +60,9 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
       setError('Only .eml files are supported. Non-eml files were ignored.');
     }
     
-    setSelectedFiles(emlFiles);
+    if (emlFiles.length > 0) {
+      uploadFiles(emlFiles);
+    }
   };
 
   const handleDragOver = (e) => {
@@ -38,48 +83,24 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
         setError('Only .eml files are supported. Non-eml files were ignored.');
       }
       
-      setSelectedFiles(emlFiles);
+      if (emlFiles.length > 0) {
+        uploadFiles(emlFiles);
+      }
     }
   };
 
-  const handleUpload = async () => {
-    if (selectedFiles.length === 0) {
-      setError('Please select at least one .eml file to upload');
-      return;
-    }
-
-    setIsUploading(true);
-    setError(null);
-    setUploadProgress(0);
-
-    const uploadedFiles = [];
-    const totalFiles = selectedFiles.length;
-    
+  const handleDelete = async (fileId) => {
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i];
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('workspace', workspaceId);
-        
-        const response = await emailFileAPI.upload(formData);
-        uploadedFiles.push(response.data);
-        
-        // Update progress
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
-      }
-      
-      setSelectedFiles([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      
-      onUploadSuccess(uploadedFiles);
+      setIsDeleting(true);
+      await emailFileAPI.delete(fileId);
+      // Update the UI by filtering out the deleted file
+      const updatedFiles = existingFiles.filter(file => file.id !== fileId);
+      onUploadSuccess([], updatedFiles);
     } catch (err) {
-      console.error('Error uploading files:', err);
-      setError('Failed to upload files: ' + (err.response?.data?.error || err.message));
+      console.error('Error deleting file:', err);
+      setError('Failed to delete file: ' + (err.response?.data?.error || err.message));
     } finally {
-      setIsUploading(false);
+      setIsDeleting(false);
     }
   };
 
@@ -121,7 +142,7 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
               htmlFor="file-upload"
               className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
             >
-              <span>Upload email files</span>
+              <span>Select email files</span>
               <input
                 id="file-upload"
                 name="file-upload"
@@ -139,37 +160,16 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
           <p className="text-xs text-gray-500">
             Only .eml files are supported. These will be classified as <span className="font-semibold text-red-600">SPAM</span>
           </p>
+          <p className="text-xs text-gray-500 pt-1">
+            Files will be uploaded automatically when selected
+          </p>
         </div>
       </div>
-
-      {selectedFiles.length > 0 && (
-        <div className="mt-4">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Files ({selectedFiles.length}):</h4>
-          <ul className="max-h-40 overflow-y-auto border border-gray-200 rounded-md divide-y divide-gray-200">
-            {selectedFiles.map((file, index) => (
-              <li key={index} className="pl-3 pr-4 py-2 flex items-center justify-between text-sm">
-                <div className="w-0 flex-1 flex items-center">
-                  <svg className="flex-shrink-0 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M8 4a3 3 0 00-3 3v4a5 5 0 0010 0V7a1 1 0 112 0v4a7 7 0 11-14 0V7a5 5 0 0110 0v4a3 3 0 11-6 0V7a1 1 0 012 0v4a1 1 0 102 0V7a3 3 0 00-3-3z" clipRule="evenodd" />
-                  </svg>
-                  <span className="ml-2 flex-1 w-0 truncate">{file.name}</span>
-                </div>
-                <div className="ml-4 flex-shrink-0 flex items-center">
-                  <span className="text-xs text-gray-500 mr-2">{(file.size / 1024).toFixed(1)} KB</span>
-                  <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                    SPAM
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {isUploading && (
         <div className="mt-4">
           <div className="mb-1 text-sm font-medium flex justify-between">
-            <span>Uploading...</span>
+            <span>Uploading {currentUploadCount} of {totalUploadCount} files...</span>
             <span>{uploadProgress}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
@@ -196,9 +196,19 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
                       <span className="text-xs text-gray-500 mr-3">
                         Uploaded: {new Date(file.uploaded_at).toLocaleDateString()}
                       </span>
-                      <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
+                      <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800 mr-3">
                         SPAM
                       </span>
+                      <button 
+                        onClick={() => handleDelete(file.id)}
+                        disabled={isDeleting}
+                        className="text-red-600 hover:text-red-900 focus:outline-none"
+                        title="Delete file"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -207,18 +217,7 @@ const EmailUploader = ({ workspaceId, existingFiles, onUploadSuccess, onContinue
           </div>
         )}
 
-        <div className="flex justify-between">
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={selectedFiles.length === 0 || isUploading}
-            className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
-              (selectedFiles.length === 0 || isUploading) ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-          >
-            {isUploading ? 'Uploading...' : 'Upload Selected Files'}
-          </button>
-          
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={onContinue}

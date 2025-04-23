@@ -325,6 +325,33 @@ class EmailFileViewSet(viewsets.ModelViewSet):
         else:
             raise ValidationError({"file": "No file was submitted."})
 
+    def destroy(self, request, *args, **kwargs):
+        """Custom delete method to check permissions."""
+        email_file = self.get_object()
+        
+        # Check if user has permission to delete (must be owner or have write permission)
+        has_permission = False
+        
+        if email_file.workspace.user == request.user:
+            # User owns the workspace
+            has_permission = True
+        else:
+            # Check if user has write permission for shared workspace
+            has_permission = WorkspaceShare.objects.filter(
+                workspace=email_file.workspace,
+                shared_with=request.user,
+                permission=WorkspaceShare.WRITE,
+            ).exists()
+            
+        if not has_permission:
+            raise PermissionDenied(
+                "You don't have permission to delete files from this workspace."
+            )
+            
+        # Perform the delete operation
+        self.perform_destroy(email_file)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=["get"])
     def available_headers(self, request):
         """Get all available headers from the processed emails."""
@@ -563,6 +590,9 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
                 "is_complete": rule_generation.is_complete,
                 "rule": rule_generation.rule if rule_generation.is_complete else None,
                 "error": rule_generation.error if rule_generation.is_complete else None,
+                "created_by": rule_generation.created_by.username,
+                "created_at": rule_generation.created_at,
+                "is_regeneration": rule_generation.is_regeneration,
             },
             status=status.HTTP_200_OK,
         )

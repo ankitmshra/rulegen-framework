@@ -149,6 +149,7 @@ class RuleGeneration(models.Model):
         User, on_delete=models.CASCADE, related_name="created_rules"
     )
     is_complete = models.BooleanField(default=False)
+    is_regeneration = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.workspace.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"

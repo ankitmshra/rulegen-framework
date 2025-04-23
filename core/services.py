@@ -83,25 +83,42 @@ class SpamGenieService:
 
                 content_type = part.get_content_type()
                 try:
-                    content = part.get_payload(decode=True).decode()
-                except (UnicodeDecodeError, AttributeError):
+                    # Get the content and decode it
+                    content = part.get_payload(decode=True)
+                    if content:
+                        # Try to decode with UTF-8 first, fall back to latin-1 if that fails
+                        try:
+                            decoded_content = content.decode('utf-8')
+                        except UnicodeDecodeError:
+                            decoded_content = content.decode('latin-1')
+                        
+                        if content_type == "text/plain":
+                            body["plain"] += decoded_content
+                        elif content_type == "text/html":
+                            body["html"] += decoded_content
+                except (UnicodeDecodeError, AttributeError) as e:
+                    import logging
+                    logging.error(f"Error decoding email part: {str(e)}")
                     continue
-
-                if content_type == "text/plain":
-                    body["plain"] += content
-                elif content_type == "text/html":
-                    body["html"] += content
         else:
             # Handle non-multipart messages
             content_type = msg.get_content_type()
             try:
-                content = msg.get_payload(decode=True).decode()
-                if content_type == "text/plain":
-                    body["plain"] = content
-                elif content_type == "text/html":
-                    body["html"] = content
-            except (UnicodeDecodeError, AttributeError):
-                pass
+                content = msg.get_payload(decode=True)
+                if content:
+                    # Try to decode with UTF-8 first, fall back to latin-1 if that fails
+                    try:
+                        decoded_content = content.decode('utf-8')
+                    except UnicodeDecodeError:
+                        decoded_content = content.decode('latin-1')
+                    
+                    if content_type == "text/plain":
+                        body["plain"] = decoded_content
+                    elif content_type == "text/html":
+                        body["html"] = decoded_content
+            except (UnicodeDecodeError, AttributeError) as e:
+                import logging
+                logging.error(f"Error decoding email body: {str(e)}")
 
         return body
 
@@ -243,7 +260,10 @@ class SpamGenieService:
             email_data = SpamGenieService.parse_email(email_file)
             filtered_data = {
                 "headers": {k: email_data["headers"].get(k, "") for k in selected_headers},
-                "body": email_data["body"],
+                "body": {
+                    "plain": email_data["body"].get("plain", ""),
+                    "html": email_data["body"].get("html", "")
+                },
                 "is_spam": True,
             }
             spam_analysis_data.append(filtered_data)

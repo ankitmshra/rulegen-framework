@@ -91,18 +91,35 @@ class PromptManager:
             Dictionary with formatted headers and body sections
         """
         if not analysis_data:
-            return {"headers": "{}", "body_plain": "", "body_html": ""}
+            return {"headers": "{}", "body": "", "body_plain": "", "body_html": "", "urls": []}
 
         # Extract headers
         headers = json.dumps(analysis_data[0]["headers"], indent=2)
 
-        # Extract body samples - limit length to avoid overly long prompts
-        body_plain = (
-            analysis_data[0]["body"].get("plain", "")[:1000] if analysis_data else ""
-        )
-        body_html = (
-            analysis_data[0]["body"].get("html", "")[:1000] if analysis_data else ""
-        )
+        # Extract body content
+        body_content = ""
+        if analysis_data and "body" in analysis_data[0]:
+            body = analysis_data[0]["body"]
+            
+            # Get plain text content
+            plain_text = body.get("plain", "")
+            if plain_text:
+                body_content += f"""
+Plain Text:
+```
+{plain_text[:1000]}
+```
+"""
+
+            # Get HTML content
+            html_content = body.get("html", "")
+            if html_content:
+                body_content += f"""
+HTML Content:
+```
+{html_content[:1000]}
+```
+"""
 
         # Extract any URLs found
         urls = []
@@ -118,10 +135,27 @@ class PromptManager:
         # Extract spam patterns
         spam_patterns = analysis_data[0].get("spam_patterns", {})
 
+        # Format the complete content
+        formatted_content = f"""
+## Email Headers
+```
+{headers}
+```
+
+## Email Body
+{body_content}
+
+## Extracted URLs
+```
+{chr(10).join(urls) if urls else "No URLs found"}
+```
+"""
+
         return {
             "headers": headers,
-            "body_plain": body_plain,
-            "body_html": body_html,
+            "body": formatted_content,
+            "body_plain": body.get("plain", "") if "body" in analysis_data[0] else "",
+            "body_html": body.get("html", "") if "body" in analysis_data[0] else "",
             "urls": list(set(urls))[:10],  # Remove duplicates and limit
             "spam_patterns": spam_patterns,
         }
@@ -137,7 +171,7 @@ class PromptManager:
 
         Args:
             analysis_data: List of dictionaries containing email analysis data
-            selected_modules: List of module names to include
+            selected_modules: List of module IDs to include
             base_prompt_id: Optional ID of a specific base prompt to use
 
         Returns:
@@ -176,30 +210,12 @@ class PromptManager:
         # Format email data for the prompt
         formatted_data = PromptManager.format_email_data(analysis_data)
 
-        # Replace placeholders
-        prompt_content = prompt_content.replace("{HEADERS}", formatted_data["headers"])
+        # Add email content to the prompt
+        email_content = f"""
+## Email Content for Analysis
 
-        email_body_content = f"""
-Plain Text:
-```
-{formatted_data["body_plain"]}
-```
+{formatted_data["body"]}
 
-HTML Content:
-```
-{formatted_data["body_html"]}
-```
-
-Extracted URLs:
-```
-{chr(10).join(formatted_data["urls"]) if formatted_data["urls"] else "No URLs found"}
-```
-"""
-        prompt_content = prompt_content.replace("{EMAIL_BODY}", email_body_content)
-
-        # Add spam analysis if available
-        if "spam_patterns" in formatted_data:
-            spam_content = """
 ## Spam Analysis
 
 The following is an analysis of patterns found in spam emails:
@@ -207,71 +223,55 @@ The following is an analysis of patterns found in spam emails:
 ### Patterns found in SPAM emails:
 """
 
-            # Add spam patterns
-            if formatted_data["spam_patterns"]:
-                spam_patterns = formatted_data["spam_patterns"]
+        # Add spam patterns if available
+        if "spam_patterns" in formatted_data and formatted_data["spam_patterns"]:
+            spam_patterns = formatted_data["spam_patterns"]
 
-                # Add header patterns
-                if (
-                    "header_patterns" in spam_patterns
-                    and spam_patterns["header_patterns"]
-                ):
-                    spam_content += "\nHeader patterns:\n"
-                    for header, values in spam_patterns["header_patterns"].items():
-                        # Only show first few values for clarity
-                        value_display = (
-                            values[:3] if isinstance(values, list) else values
-                        )
-                        spam_content += f"- {header}: {value_display}\n"
+            # Add header patterns
+            if "header_patterns" in spam_patterns and spam_patterns["header_patterns"]:
+                email_content += "\nHeader patterns:\n"
+                for header, values in spam_patterns["header_patterns"].items():
+                    # Only show first few values for clarity
+                    value_display = values[:3] if isinstance(values, list) else values
+                    email_content += f"- {header}: {value_display}\n"
 
-                # Add body patterns
-                if "body_patterns" in spam_patterns and spam_patterns["body_patterns"]:
-                    body_patterns = spam_patterns["body_patterns"]
+            # Add body patterns
+            if "body_patterns" in spam_patterns and spam_patterns["body_patterns"]:
+                body_patterns = spam_patterns["body_patterns"]
 
-                    if (
-                        "common_phrases" in body_patterns
-                        and body_patterns["common_phrases"]
-                    ):
-                        spam_content += "\nCommon phrases:\n"
-                        for phrase in body_patterns["common_phrases"][:5]:
-                            spam_content += f"- {phrase}\n"
+                if "common_phrases" in body_patterns and body_patterns["common_phrases"]:
+                    email_content += "\nCommon phrases:\n"
+                    for phrase in body_patterns["common_phrases"][:5]:
+                        email_content += f"- {phrase}\n"
 
-                    if (
-                        "url_patterns" in body_patterns
-                        and body_patterns["url_patterns"]
-                    ):
-                        spam_content += "\nURL patterns:\n"
-                        for url in body_patterns["url_patterns"][:5]:
-                            spam_content += f"- {url}\n"
+                if "url_patterns" in body_patterns and body_patterns["url_patterns"]:
+                    email_content += "\nURL patterns:\n"
+                    for url in body_patterns["url_patterns"][:5]:
+                        email_content += f"- {url}\n"
 
-            # Add guidance for the AI
-            spam_content += """
+        # Add guidance for the AI
+        email_content += """
 IMPORTANT: When generating SpamAssassin rules,
 focus on identifying and prioritizing patterns that are characteristic of spam emails.
 """
 
-            # Add the spam analysis to the prompt
-            prompt_content += spam_content
+        # Combine the base prompt with email content
+        prompt_content = email_content + "\n\n" + prompt_content
 
         # Add modules
         added_modules = []
-        for module in selected_modules:
-            module_content = PromptManager.get_module_prompt(module)
-            if module_content:
-                prompt_content += f"\n\n{module_content}"
-                try:
-                    module_obj = PromptTemplate.objects.get(
-                        is_module=True, module_type=module
-                    )
-                    added_modules.append(
-                        {
-                            "id": module_obj.id,
-                            "name": module_obj.name,
-                            "type": module_obj.module_type,
-                        }
-                    )
-                except PromptTemplate.DoesNotExist:
-                    pass
+        for module_id in selected_modules:
+            try:
+                module = PromptTemplate.objects.get(id=module_id, is_module=True)
+                if module.template:
+                    prompt_content += f"\n\n{module.template}"
+                    added_modules.append({
+                        "id": module.id,
+                        "name": module.name,
+                        "type": module.module_type,
+                    })
+            except PromptTemplate.DoesNotExist:
+                continue
 
         # Add a final reminder to ensure proper formatting
         prompt_content += """
