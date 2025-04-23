@@ -9,14 +9,14 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  
+
   const { login, currentUser, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Get the redirect path from location state or default to '/'
   const redirectPath = location.state?.from?.pathname || '/';
-  
+
   // Redirect if already logged in
   useEffect(() => {
     if (currentUser && !loading) {
@@ -26,23 +26,23 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!username || !password) {
       setErrorMessage('Please enter both username and password');
       return;
     }
-    
+
     try {
       setIsSubmitting(true);
       setErrorMessage('');
-      
+
       // Direct API call to catch the error response properly
       try {
         const response = await authAPI.login(username, password);
-        
+
         // If successful, update auth context
         await login(username, password);
-        
+
         // If rememberMe is checked, store the username in localStorage
         if (rememberMe) {
           localStorage.setItem('rememberedUsername', username);
@@ -54,7 +54,7 @@ const Login = () => {
         const message = apiError.response?.data?.error || 'Invalid credentials';
         throw new Error(message);
       }
-      
+
       // Navigate will happen in the useEffect when currentUser is set
     } catch (error) {
       console.error('Login error:', error);
@@ -86,20 +86,20 @@ const Login = () => {
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            SpamGenie
+            Codex
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Generate SpamAssassin Rules
           </p>
         </div>
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {errorMessage && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
               {errorMessage}
             </div>
           )}
-          
+
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="username" className="sr-only">Username</label>
@@ -151,9 +151,8 @@ const Login = () => {
           <div>
             <button
               type="submit"
-              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${
-                isSubmitting ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
-              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${isSubmitting ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'
+                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
               disabled={isSubmitting}
             >
               {isSubmitting ? (

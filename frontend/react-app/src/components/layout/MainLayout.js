@@ -41,9 +41,9 @@ const MainLayout = () => {
             {/* Left side - Logo and Workspace selector */}
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Link to="/" className="text-xl font-bold text-indigo-600">SpamGenie</Link>
+                <Link to="/" className="text-xl font-bold text-indigo-600">Codex</Link>
               </div>
-              
+
               {/* Workspace Selector Button */}
               <div className="ml-6 flex items-center">
                 <button
@@ -102,7 +102,7 @@ const MainLayout = () => {
                       <div className="text-gray-500">{currentUser.email}</div>
                       <div className="text-xs uppercase mt-1 text-indigo-600">{currentUser.role}</div>
                     </div>
-                    
+
                     <Link
                       to="/settings"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -111,7 +111,7 @@ const MainLayout = () => {
                     >
                       Settings
                     </Link>
-                    
+
                     {isAdmin() && (
                       <Link
                         to="/admin/users"
@@ -122,7 +122,7 @@ const MainLayout = () => {
                         User Management
                       </Link>
                     )}
-                    
+
                     <button
                       onClick={handleLogout}
                       className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-gray-100"
@@ -169,7 +169,7 @@ const MainLayout = () => {
       <footer className="bg-white border-t border-gray-200">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
           <p className="text-center text-sm text-gray-500">
-            &copy; {new Date().getFullYear()} SpamGenie - Generate SpamAssassin Rules
+            &copy; {new Date().getFullYear()} Codex - Generate SpamAssassin Rules
           </p>
         </div>
       </footer>
