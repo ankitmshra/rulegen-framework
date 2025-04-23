@@ -109,11 +109,9 @@ class EmailFile(models.Model):
 
     # Email type choices
     SPAM = "spam"
-    HAM = "ham"
 
     EMAIL_TYPE_CHOICES = [
         (SPAM, "Spam"),
-        (HAM, "Ham (Not Spam)"),
     ]
 
     workspace = models.ForeignKey(

@@ -166,7 +166,7 @@ Common HTML spam techniques to target:
 - Present each rule in its own code block
 - For HTML patterns, ALWAYS use 'rawbody', NEVER 'body'
 - Prefix HTML-specific rule names with "__BSF_HTML_"
-- Prioritize patterns unique to spam
+- Focus on identifying patterns that are characteristic of spam emails
 """,
             },
         )
@@ -238,7 +238,7 @@ Common HTML spam techniques to target:
 - Present each rule in its own code block
 - For HTML patterns, ALWAYS use 'rawbody', NEVER 'body'
 - Prefix HTML-specific rule names with "__BSF_HTML_"
-- Prioritize patterns unique to spam
+- Focus on identifying patterns that are characteristic of spam emails
 """
             # Update creator if it's not set and we have an admin user
             if not base_prompt.created_by and admin_user:

@@ -16,7 +16,6 @@ from .models import AppSettings
 import functools
 import threading
 from contextlib import contextmanager
-import time
 from threading import Event
 import concurrent.futures
 
@@ -26,13 +25,15 @@ class TimeoutState:
         self.timed_out = Event()
         self.error_message = None
 
+
 @contextmanager
 def timeout_context(seconds, timeout_state):
     timer = None
+
     def timeout_handler():
         timeout_state.timed_out.set()
         timeout_state.error_message = "Operation timed out"
-    
+
     try:
         timer = threading.Timer(seconds, timeout_handler)
         timer.start()
@@ -41,14 +42,18 @@ def timeout_context(seconds, timeout_state):
         if timer:
             timer.cancel()
 
+
 def timeout_decorator(seconds):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             with timeout_context(seconds):
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
+
 
 class SpamGenieService:
     """Service class for processing email files and generating SpamAssassin rules."""
@@ -232,31 +237,16 @@ class SpamGenieService:
         if email_files is None:
             email_files = workspace.email_files.all()
 
-        # Separate spam and ham emails
-        spam_email_files = [ef for ef in email_files if ef.email_type == EmailFile.SPAM]
-        ham_email_files = [ef for ef in email_files if ef.email_type == EmailFile.HAM]
-
         # Process spam emails
         spam_analysis_data = []
-        for email_file in spam_email_files:
+        for email_file in email_files:
             email_data = SpamGenieService.parse_email(email_file)
             filtered_data = {
                 "headers": {k: email_data["headers"].get(k, "") for k in selected_headers},
                 "body": email_data["body"],
-                "is_spam": True,  # Mark as spam
+                "is_spam": True,
             }
             spam_analysis_data.append(filtered_data)
-
-        # Process ham emails
-        ham_analysis_data = []
-        for email_file in ham_email_files:
-            email_data = SpamGenieService.parse_email(email_file)
-            filtered_data = {
-                "headers": {k: email_data["headers"].get(k, "") for k in selected_headers},
-                "body": email_data["body"],
-                "is_spam": False,  # Mark as ham
-            }
-            ham_analysis_data.append(filtered_data)
 
         # Enhance analysis data with additional patterns
         enhanced_spam_data = (
@@ -264,40 +254,20 @@ class SpamGenieService:
             if spam_analysis_data
             else []
         )
-        enhanced_ham_data = (
-            SpamGenieService._enhance_analysis_data(ham_analysis_data) if ham_analysis_data else []
-        )
 
-        # Extract common patterns and characteristics for both types
+        # Extract common patterns and characteristics
         spam_patterns = (
             SpamGenieService._extract_common_patterns(enhanced_spam_data)
             if enhanced_spam_data
             else {}
         )
-        ham_patterns = (
-            SpamGenieService._extract_common_patterns(enhanced_ham_data)
-            if enhanced_ham_data
-            else {}
-        )
 
-        # Combine analysis data for prompt building
+        # Prepare data for prompt building
         combined_data = []
-
-        # Add spam data with patterns
         if enhanced_spam_data:
             combined_data = enhanced_spam_data
             if combined_data:
                 combined_data[0]["spam_patterns"] = spam_patterns
-
-        # Add ham data with patterns
-        if enhanced_ham_data:
-            if not combined_data and enhanced_ham_data:
-                combined_data = enhanced_ham_data
-                if combined_data:
-                    combined_data[0]["ham_patterns"] = ham_patterns
-            elif combined_data:
-                # If we already have spam data, add ham patterns to it
-                combined_data[0]["ham_patterns"] = ham_patterns
 
         # Use PromptManager to build the prompt
         prompt_data = PromptManager.build_prompt(combined_data, selected_modules, base_prompt_id)
@@ -306,8 +276,7 @@ class SpamGenieService:
         if not rule_generation.prompt_metadata:
             rule_generation.prompt_metadata = {
                 **(prompt_data.get("metadata", {})),
-                "spam_count": len(spam_email_files),
-                "ham_count": len(ham_email_files),
+                "spam_count": len(email_files),
             }
             rule_generation.save(update_fields=["prompt_metadata"])
 
@@ -325,19 +294,19 @@ class SpamGenieService:
             endpoint_setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_ENDPOINT)
             api_endpoint = endpoint_setting.value
         except AppSettings.DoesNotExist:
-            api_endpoint = 'https://api.sage.cudasvc.com'  # Default endpoint
+            api_endpoint = "https://api.sage.cudasvc.com"  # Default endpoint
 
         try:
             version_setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_VERSION)
             api_version = version_setting.value
         except AppSettings.DoesNotExist:
-            api_version = ''  # Default version
+            api_version = ""  # Default version
 
         try:
             team_setting = AppSettings.objects.get(key=AppSettings.OPENAI_TEAM_NAME)
             team_name = team_setting.value
         except AppSettings.DoesNotExist:
-            team_name = 'bci_ta'  # Default team name
+            team_name = "bci_ta"  # Default team name
 
         # Generate JWT token for authentication
         now = datetime.datetime.now(datetime.UTC)
@@ -370,7 +339,7 @@ class SpamGenieService:
                 model_setting = AppSettings.objects.get(key=AppSettings.OPENAI_MODEL_NAME)
                 model_name = model_setting.value
             except AppSettings.DoesNotExist:
-                model_name = 'deepseek-r1'  # Default model
+                model_name = "deepseek-r1"  # Default model
 
             # Set up messages for the chat completion
             messages = [
@@ -399,9 +368,12 @@ class SpamGenieService:
 
         except Exception as e:
             import logging
+
             error_message = str(e)
             if "timeout" in error_message.lower():
-                error_message = "Request timed out. Please try again or increase the timeout value in settings."
+                error_message = (
+                    "Request timed out. Please try again or increase the timeout value in settings."
+                )
             logging.error(f"Error querying OpenAI API: {error_message}")
             raise Exception(f"Error querying OpenAI API: {error_message}")
 
@@ -411,11 +383,13 @@ class SpamGenieService:
         try:
             rule_generation = RuleGeneration.objects.get(id=rule_generation_id)
             workspace = rule_generation.workspace
+
+            # Get all email files from the workspace
             email_files = workspace.email_files.all()
 
             # Get timeout setting
             try:
-                timeout_setting = AppSettings.objects.get(key='rule_gen_timeout')
+                timeout_setting = AppSettings.objects.get(key="rule_gen_timeout")
                 timeout = int(timeout_setting.value) / 1000  # Convert milliseconds to seconds
             except AppSettings.DoesNotExist:
                 timeout = 30  # Default 30 seconds
@@ -433,7 +407,10 @@ class SpamGenieService:
                     try:
                         rule = future.result(timeout=timeout)
                     except concurrent.futures.TimeoutError:
-                        error_message = "Request timed out. Please try again or increase the timeout value in settings."
+                        error_message = (
+                            "Request timed out. "
+                            + "Please try again or increase the timeout value in settings."
+                        )
                         rule_generation.rule = error_message
                         rule_generation.error = error_message
                         rule_generation.is_complete = True
@@ -479,6 +456,7 @@ class SpamGenieService:
             }
         except Exception as e:
             import logging
+
             error_message = str(e)
             logging.error(f"Error processing rule generation {rule_generation_id}: {error_message}")
             # Update rule generation with error

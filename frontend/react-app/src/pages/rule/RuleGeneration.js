@@ -4,7 +4,6 @@ import EmailUploader from '../../components/rule/EmailUploader';
 import HeaderSelector from '../../components/rule/HeaderSelector';
 import PromptEditor from '../../components/rule/PromptEditor';
 import RuleViewer from '../../components/rule/RuleViewer';
-import SpamHamStats from '../../components/rule/SpamHamStats';
 
 const RuleGeneration = ({ workspace }) => {
   // Email file state
@@ -233,7 +232,7 @@ const RuleGeneration = ({ workspace }) => {
       setGeneratedRules([response.data, ...generatedRules]);
       setCurrentRuleIndex(0);
 
-      // Poll for rule completion
+      // Poll for rule generation completion
       pollRuleGeneration(response.data.id);
     } catch (err) {
       console.error('Error generating rule:', err);
@@ -395,11 +394,8 @@ const RuleGeneration = ({ workspace }) => {
     <div>
       <h2 className="text-lg font-medium text-gray-900 mb-2">Rule Generation</h2>
       <p className="text-sm text-gray-500 mb-6">
-        Generate SpamAssassin rules using email samples and configured prompts
+        Generate SpamAssassin rules using spam email samples and configured prompts
       </p>
-
-      {/* Spam/Ham Statistics */}
-      {emailFiles.length > 0 && <SpamHamStats emailFiles={emailFiles} />}
 
       {/* Interactive Step indicator */}
       <StepIndicator 
@@ -441,6 +437,7 @@ const RuleGeneration = ({ workspace }) => {
             isGenerating={isGeneratingPrompt}
             error={promptError}
             onBack={() => setActiveStep('headers')}
+            emailFiles={emailFiles}
           />
         )}
 

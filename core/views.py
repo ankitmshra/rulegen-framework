@@ -287,9 +287,6 @@ class EmailFileViewSet(viewsets.ModelViewSet):
 
         file_obj = self.request.FILES.get("file")
         workspace_id = self.request.data.get("workspace")
-        email_type = self.request.data.get(
-            "email_type", EmailFile.SPAM
-        )  # Default to SPAM if not specified
 
         if file_obj:
             if not file_obj.name.lower().endswith(".eml"):
@@ -316,12 +313,12 @@ class EmailFileViewSet(viewsets.ModelViewSet):
                         "You don't have permission to upload files to this workspace."
                     )
 
-                # Save the EmailFile with the specified email type
+                # Save the EmailFile with spam type
                 serializer.save(
                     original_filename=file_obj.name,
                     uploaded_by=self.request.user,
                     workspace=workspace,
-                    email_type=email_type,
+                    email_type=EmailFile.SPAM,
                 )
             except Workspace.DoesNotExist:
                 raise ValidationError({"workspace": "Workspace not found."})
@@ -586,33 +583,32 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     def generate_default_prompt(self, request):
         """Generate a default prompt without saving."""
-        # Get the workspace
         workspace_id = request.data.get("workspace_id")
         if not workspace_id:
             return Response(
-                {"error": "Workspace ID is required"},
+                {"error": "workspace_id is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             workspace = Workspace.objects.get(id=workspace_id)
-            # Check permission
-            if (
-                workspace.user != request.user
-                and not WorkspaceShare.objects.filter(
-                    workspace=workspace, shared_with=request.user
-                ).exists()
-            ):
-                return Response(
-                    {"error": "You don't have permission to access this workspace"},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-        except Workspace.DoesNotExist:
-            return Response(
-                {"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND
-            )
 
-        try:
+            # Check permission (must be owner or have write permission)
+            if workspace.user != request.user:
+                share = WorkspaceShare.objects.filter(
+                    workspace=workspace,
+                    shared_with=request.user,
+                    permission=WorkspaceShare.WRITE,
+                ).first()
+
+                if not share:
+                    return Response(
+                        {
+                            "error": "You don't have permission to generate prompts for this workspace"
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
             # Get email files for this workspace
             email_files = EmailFile.objects.filter(workspace=workspace)
 

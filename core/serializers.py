@@ -143,7 +143,6 @@ class EmailFileSerializer(serializers.ModelSerializer):
             "workspace",
             "uploaded_by",
             "uploader_username",
-            "email_type",
         ]
         read_only_fields = [
             "uploaded_at",
