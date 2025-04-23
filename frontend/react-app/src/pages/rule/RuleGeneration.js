@@ -223,7 +223,7 @@ const RuleGeneration = ({ workspace }) => {
   };
 
   // Generate rule with the prompt
-  const handleGenerateRule = async () => {
+  const handleGenerateRule = async (feedback = null) => {
     try {
       setIsGeneratingRule(true);
       setRuleError(null);
@@ -231,13 +231,30 @@ const RuleGeneration = ({ workspace }) => {
       // Determine if this is a regeneration (if we already have rules for this workspace)
       const isRegeneration = generatedRules.length > 0;
 
-      const response = await ruleGenerationAPI.create({
-        workspace: workspace.id,
-        prompt: generatedPrompt,
-        prompt_modules: selectedModules,
-        base_prompt_id: selectedBasePrompt,
-        is_regeneration: isRegeneration
-      });
+      let response;
+      
+      if (feedback) {
+        // Sanitize feedback to prevent circular references
+        const sanitizedFeedback = typeof feedback === 'string' ? feedback : String(feedback);
+        
+        // Use regenerateWithFeedback API when feedback is provided
+        response = await ruleGenerationAPI.regenerateWithFeedback({
+          workspace: workspace.id,
+          prompt: generatedPrompt,
+          prompt_modules: selectedModules,
+          base_prompt_id: selectedBasePrompt,
+          feedback: sanitizedFeedback
+        });
+      } else {
+        // Use regular create API when no feedback is provided
+        response = await ruleGenerationAPI.create({
+          workspace: workspace.id,
+          prompt: generatedPrompt,
+          prompt_modules: selectedModules,
+          base_prompt_id: selectedBasePrompt,
+          is_regeneration: isRegeneration
+        });
+      }
 
       // Add new rule to the beginning of the list
       setGeneratedRules([response.data, ...generatedRules]);

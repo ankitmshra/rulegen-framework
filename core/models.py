@@ -150,6 +150,7 @@ class RuleGeneration(models.Model):
     )
     is_complete = models.BooleanField(default=False)
     is_regeneration = models.BooleanField(default=False)
+    feedback = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.workspace.name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"

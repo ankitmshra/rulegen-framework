@@ -83,6 +83,10 @@ export const ruleGenerationAPI = {
   getByWorkspace: (workspaceId) => api.get(`/rule-generations/?workspace=${workspaceId}`),
   getById: (id) => api.get(`/rule-generations/${id}/`),
   create: (data) => api.post('/rule-generations/', data),
+  regenerateWithFeedback: (data) => api.post('/rule-generations/', {
+    ...data,
+    is_regeneration: true
+  }),
   getStatus: (id) => api.get(`/rule-generations/${id}/status/`),
   generateDefaultPrompt: (data) => api.post('/rule-generations/generate_default_prompt/', data),
 };

@@ -419,6 +419,13 @@ class SpamGenieService:
                 prompt = SpamGenieService.generate_prompt(rule_generation, email_files)
                 rule_generation.prompt = prompt
                 rule_generation.save()
+            
+            # If this is a regeneration with feedback, incorporate the feedback into the prompt
+            if rule_generation.is_regeneration and rule_generation.feedback:
+                # Append feedback to the prompt
+                prompt_with_feedback = f"{rule_generation.prompt}\n\nUser Feedback: {rule_generation.feedback}"
+                rule_generation.prompt = prompt_with_feedback
+                rule_generation.save()
 
             try:
                 # Use ThreadPoolExecutor to run the API call with a timeout

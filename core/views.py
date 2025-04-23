@@ -593,6 +593,7 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
                 "created_by": rule_generation.created_by.username,
                 "created_at": rule_generation.created_at,
                 "is_regeneration": rule_generation.is_regeneration,
+                "feedback": rule_generation.feedback,
             },
             status=status.HTTP_200_OK,
         )

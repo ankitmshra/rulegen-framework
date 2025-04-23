@@ -233,6 +233,7 @@ class RuleGenerationSerializer(serializers.ModelSerializer):
             "creator_username",
             "email_files",
             "is_regeneration",
+            "feedback",
         ]
         read_only_fields = [
             "created_at",
