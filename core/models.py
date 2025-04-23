@@ -4,6 +4,8 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 import uuid
 import os
+from django.contrib.auth.models import AbstractUser
+from django.utils.translation import gettext_lazy as _
 
 
 def get_file_path(instance, filename):
@@ -143,6 +145,7 @@ class RuleGeneration(models.Model):
     base_prompt_id = models.IntegerField(null=True, blank=True)
     prompt_metadata = models.JSONField(default=dict, blank=True)
     rule = models.TextField(blank=True, null=True)
+    error = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     created_by = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="created_rules"
@@ -214,3 +217,26 @@ class PromptTemplate(models.Model):
                     "Only power users and admins can create "
                     + "globally available templates."
                 )
+
+
+class AppSettings(models.Model):
+    key = models.CharField(max_length=100, unique=True)
+    value = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Setting keys
+    RULE_GEN_TIMEOUT = 'rule_gen_timeout'
+    OPENAI_API_ENDPOINT = 'openai_api_endpoint'
+    OPENAI_API_VERSION = 'openai_api_version'
+    OPENAI_MODEL_NAME = 'openai_model_name'
+    OPENAI_EMBEDDING_MODEL_NAME = 'openai_embedding_model_name'
+    OPENAI_TEAM_NAME = 'openai_team_name'
+
+    class Meta:
+        verbose_name = 'App Setting'
+        verbose_name_plural = 'App Settings'
+
+    def __str__(self):
+        return f"{self.key}: {self.value}"

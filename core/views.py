@@ -6,13 +6,17 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 import os
 import threading
 from django.conf import settings
+from rest_framework.permissions import IsAdminUser
+import datetime
+import jwt
+from openai import AzureOpenAI
 
 from .models import (
     EmailFile,
@@ -20,6 +24,7 @@ from .models import (
     PromptTemplate,
     WorkspaceShare,
     Workspace,
+    AppSettings,
 )
 from .serializers import (
     EmailFileSerializer,
@@ -560,6 +565,7 @@ class RuleGenerationViewSet(viewsets.ModelViewSet):
                 "workspace_name": rule_generation.workspace.name,
                 "is_complete": rule_generation.is_complete,
                 "rule": rule_generation.rule if rule_generation.is_complete else None,
+                "error": rule_generation.error if rule_generation.is_complete else None,
             },
             status=status.HTTP_200_OK,
         )
@@ -758,3 +764,375 @@ class WorkspaceShareViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "Share not found"}, status=status.HTTP_404_NOT_FOUND
             )
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def rule_gen_timeout_settings(request):
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == 'GET':
+        try:
+            setting = AppSettings.objects.get(key=AppSettings.RULE_GEN_TIMEOUT)
+            return Response({'timeout': int(setting.value)})
+        except AppSettings.DoesNotExist:
+            return Response({'timeout': 30000})
+    
+    elif request.method == 'POST':
+        timeout = request.data.get('timeout')
+        if not timeout or not isinstance(timeout, int) or timeout < 1000:
+            return Response(
+                {'error': 'Invalid timeout value. Must be an integer >= 1000'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        setting, _ = AppSettings.objects.get_or_create(
+            key=AppSettings.RULE_GEN_TIMEOUT,
+            defaults={
+                'value': str(timeout),
+                'description': 'Timeout value in milliseconds for rule generation'
+            }
+        )
+        if setting.value != str(timeout):
+            setting.value = str(timeout)
+            setting.save()
+        
+        return Response({'timeout': timeout})
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def openai_api_endpoint_settings(request):
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == 'GET':
+        try:
+            setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_ENDPOINT)
+            return Response({'endpoint': setting.value})
+        except AppSettings.DoesNotExist:
+            return Response({'endpoint': 'https://api.sage.cudasvc.com'})
+    
+    elif request.method == 'POST':
+        endpoint = request.data.get('endpoint')
+        if not endpoint or not isinstance(endpoint, str):
+            return Response(
+                {'error': 'Invalid endpoint value. Must be a valid URL.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        setting, _ = AppSettings.objects.get_or_create(
+            key=AppSettings.OPENAI_API_ENDPOINT,
+            defaults={
+                'value': endpoint,
+                'description': 'OpenAI API endpoint URL for rule generation'
+            }
+        )
+        if setting.value != endpoint:
+            setting.value = endpoint
+            setting.save()
+        
+        return Response({'endpoint': endpoint})
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def openai_api_version_settings(request):
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == 'GET':
+        try:
+            setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_VERSION)
+            return Response({'version': setting.value})
+        except AppSettings.DoesNotExist:
+            return Response({'version': ''})
+    
+    elif request.method == 'POST':
+        version = request.data.get('version', '')  # Default to empty string if not provided
+        if not isinstance(version, str):
+            return Response(
+                {'error': 'Invalid version value. Must be a string.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        setting, _ = AppSettings.objects.get_or_create(
+            key=AppSettings.OPENAI_API_VERSION,
+            defaults={
+                'value': version,
+                'description': 'OpenAI API version for rule generation'
+            }
+        )
+        if setting.value != version:
+            setting.value = version
+            setting.save()
+        
+        return Response({'version': version})
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def openai_model_name_settings(request):
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == 'GET':
+        try:
+            setting = AppSettings.objects.get(key=AppSettings.OPENAI_MODEL_NAME)
+            return Response({'model': setting.value})
+        except AppSettings.DoesNotExist:
+            return Response({'model': 'deepseek-r1'})
+    
+    elif request.method == 'POST':
+        model = request.data.get('model')
+        if not model or not isinstance(model, str):
+            return Response(
+                {'error': 'Invalid model value. Must be a string.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        setting, _ = AppSettings.objects.get_or_create(
+            key=AppSettings.OPENAI_MODEL_NAME,
+            defaults={
+                'value': model,
+                'description': 'OpenAI model name for rule generation'
+            }
+        )
+        if setting.value != model:
+            setting.value = model
+            setting.save()
+        
+        return Response({'model': model})
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def openai_team_name_settings(request):
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == 'GET':
+        try:
+            setting = AppSettings.objects.get(key=AppSettings.OPENAI_TEAM_NAME)
+            return Response({'team': setting.value})
+        except AppSettings.DoesNotExist:
+            return Response({'team': 'bci_ta'})
+    
+    elif request.method == 'POST':
+        team = request.data.get('team')
+        if not team or not isinstance(team, str):
+            return Response(
+                {'error': 'Invalid team value. Must be a string.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        setting, _ = AppSettings.objects.get_or_create(
+            key=AppSettings.OPENAI_TEAM_NAME,
+            defaults={
+                'value': team,
+                'description': 'OpenAI team name for API authentication'
+            }
+        )
+        if setting.value != team:
+            setting.value = team
+            setting.save()
+        
+        return Response({'team': team})
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def openai_available_models(request):
+    """Fetch available models from the OpenAI API."""
+    import logging
+    
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+        # Get API endpoint from settings
+        try:
+            endpoint_setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_ENDPOINT)
+            api_endpoint = endpoint_setting.value
+        except AppSettings.DoesNotExist:
+            api_endpoint = 'https://api.sage.cudasvc.com'  # Default endpoint
+
+        # Get API version from settings
+        try:
+            version_setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_VERSION)
+            api_version = version_setting.value
+        except AppSettings.DoesNotExist:
+            api_version = ''  # Default version
+
+        # Get team name from settings
+        try:
+            team_setting = AppSettings.objects.get(key=AppSettings.OPENAI_TEAM_NAME)
+            team_name = team_setting.value
+        except AppSettings.DoesNotExist:
+            team_name = 'bci_ta'  # Default team name
+
+        # Generate JWT token for authentication
+        team_private_key = settings.TEAM_PRIVATE_KEY
+        if not team_private_key:
+            raise ValueError("TEAM_PRIVATE_KEY environment variable not set!")
+
+        # Log the first few characters of the key for debugging (safely)
+        key_preview = team_private_key[:10] + "..." if team_private_key else "None"
+        logging.info(f"Using team private key starting with: {key_preview}")
+        
+        now = datetime.datetime.now(datetime.UTC)
+        payload = {
+            "iss": team_name,
+            "kid": "1",
+            "iat": now.timestamp(),
+            "nbf": now.timestamp(),
+            "exp": (now + datetime.timedelta(hours=1)).timestamp(),
+            "session_token": f"session_{now.timestamp()}",
+        }
+        
+        # Log the payload for debugging
+        logging.info(f"JWT payload: {payload}")
+        
+        encoded = jwt.encode(payload, team_private_key, algorithm="PS256")
+        
+        # Log the token for debugging
+        token_preview = encoded[:20] + "..." if encoded else "None"
+        logging.info(f"Generated JWT token starting with: {token_preview}")
+
+        # Create a new client with the current settings
+        client = AzureOpenAI(
+            api_version=api_version,
+            azure_endpoint=api_endpoint,
+            api_key=encoded,  # Use the JWT token as the API key
+        )
+
+        # Use a direct API call instead of the models.list() method
+        headers = {
+            "Authorization": f"Bearer {encoded}",
+            "Content-Type": "application/json",
+        }
+        
+        logging.info(f"Making request to {api_endpoint}/models with headers: {headers}")
+        
+        response = client._client.get("/models", headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, dict) and 'data' in data:
+                model_list = [model['id'] for model in data['data']]
+            elif isinstance(data, list):
+                model_list = [model['id'] for model in data]
+            else:
+                raise ValueError(f"Unexpected response format: {data}")
+            
+            model_list.sort()
+            return Response({'models': model_list})
+        else:
+            # Log the full response for debugging
+            logging.error(f"API response status: {response.status_code}")
+            logging.error(f"API response headers: {response.headers}")
+            logging.error(f"API response body: {response.text}")
+            raise ValueError(f"API request failed with status {response.status_code}: {response.text}")
+            
+    except Exception as e:
+        logging.error(f"Error fetching OpenAI models: {str(e)}")
+        logging.error(f"Error type: {type(e)}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        return Response(
+            {'error': f'Failed to fetch models: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAdminUser])
+def openai_embedding_model_name_settings(request):
+    if not request.user.is_authenticated:
+        return Response(
+            {'error': 'Authentication required'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not request.user.profile.is_admin:
+        return Response(
+            {'error': 'Admin privileges required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if request.method == 'GET':
+        try:
+            setting = AppSettings.objects.get(key=AppSettings.OPENAI_EMBEDDING_MODEL_NAME)
+            return Response({'model': setting.value})
+        except AppSettings.DoesNotExist:
+            return Response({'model': 'text-embedding-ada-002'})
+    
+    elif request.method == 'POST':
+        model = request.data.get('model')
+        if not model or not isinstance(model, str):
+            return Response(
+                {'error': 'Invalid model value. Must be a string.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        setting, _ = AppSettings.objects.get_or_create(
+            key=AppSettings.OPENAI_EMBEDDING_MODEL_NAME,
+            defaults={
+                'value': model,
+                'description': 'OpenAI embedding model name for rule generation'
+            }
+        )
+        if setting.value != model:
+            setting.value = model
+            setting.save()
+        
+        return Response({'model': model})

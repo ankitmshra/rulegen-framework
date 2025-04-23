@@ -137,9 +137,8 @@ CORS_ALLOWED_ORIGINS = os.getenv(
 
 # OpenAI API settings (replacing Gemini)
 TEAM_PRIVATE_KEY = os.getenv("TEAM_PRIVATE_KEY", "")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://api.openllm.apenai.com")
 OPENAI_API_VERSION = os.getenv("OPENAI_API_VERSION", "")
-OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "deepseek-r1")
+OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "deepseek-r1")  # "claude-3-7-sonnet"
 
 # REST Framework settings
 REST_FRAMEWORK = {

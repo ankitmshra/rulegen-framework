@@ -12,7 +12,43 @@ from email import policy
 from django.conf import settings
 from .models import EmailFile, RuleGeneration
 from openai import AzureOpenAI
+from .models import AppSettings
+import functools
+import threading
+from contextlib import contextmanager
+import time
+from threading import Event
+import concurrent.futures
 
+
+class TimeoutState:
+    def __init__(self):
+        self.timed_out = Event()
+        self.error_message = None
+
+@contextmanager
+def timeout_context(seconds, timeout_state):
+    timer = None
+    def timeout_handler():
+        timeout_state.timed_out.set()
+        timeout_state.error_message = "Operation timed out"
+    
+    try:
+        timer = threading.Timer(seconds, timeout_handler)
+        timer.start()
+        yield
+    finally:
+        if timer:
+            timer.cancel()
+
+def timeout_decorator(seconds):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            with timeout_context(seconds):
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 class SpamGenieService:
     """Service class for processing email files and generating SpamAssassin rules."""
@@ -284,10 +320,29 @@ class SpamGenieService:
         if not team_private_key:
             raise ValueError("TEAM_PRIVATE_KEY environment variable not set!")
 
+        # Get settings from database
+        try:
+            endpoint_setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_ENDPOINT)
+            api_endpoint = endpoint_setting.value
+        except AppSettings.DoesNotExist:
+            api_endpoint = 'https://api.sage.cudasvc.com'  # Default endpoint
+
+        try:
+            version_setting = AppSettings.objects.get(key=AppSettings.OPENAI_API_VERSION)
+            api_version = version_setting.value
+        except AppSettings.DoesNotExist:
+            api_version = ''  # Default version
+
+        try:
+            team_setting = AppSettings.objects.get(key=AppSettings.OPENAI_TEAM_NAME)
+            team_name = team_setting.value
+        except AppSettings.DoesNotExist:
+            team_name = 'bci_ta'  # Default team name
+
         # Generate JWT token for authentication
         now = datetime.datetime.now(datetime.UTC)
         payload = {
-            "iss": "low",  # Team name as defined in your OpenAI account
+            "iss": team_name,  # Team name from settings
             "kid": "1",  # Key ID, should be 1 unless revoked and new keys issued
             "iat": now.timestamp(),  # Issued at time
             "nbf": now.timestamp(),  # Not before time
@@ -298,8 +353,8 @@ class SpamGenieService:
 
         # Create and return Azure OpenAI client
         client = AzureOpenAI(
-            api_version=settings.OPENAI_API_VERSION,
-            azure_endpoint=settings.AZURE_OPENAI_ENDPOINT,
+            api_version=api_version,
+            azure_endpoint=api_endpoint,
             azure_ad_token=encoded,
         )
         return client
@@ -309,6 +364,13 @@ class SpamGenieService:
         """Query OpenAI API to generate SpamAssassin rules."""
         try:
             client = SpamGenieService.get_openai_client()
+
+            # Get model name from settings
+            try:
+                model_setting = AppSettings.objects.get(key=AppSettings.OPENAI_MODEL_NAME)
+                model_name = model_setting.value
+            except AppSettings.DoesNotExist:
+                model_name = 'deepseek-r1'  # Default model
 
             # Set up messages for the chat completion
             messages = [
@@ -325,7 +387,7 @@ class SpamGenieService:
             # Create the completion with the appropriate model
             completion = client.chat.completions.create(
                 messages=messages,
-                model=settings.OPENAI_MODEL_NAME,
+                model=model_name,
                 temperature=0.2,  # Lower temperature for more precise rule generation
                 max_tokens=8000,
             )
@@ -337,9 +399,11 @@ class SpamGenieService:
 
         except Exception as e:
             import logging
-
-            logging.error(f"Error querying OpenAI API: {str(e)}")
-            raise Exception(f"Error querying OpenAI API: {str(e)}")
+            error_message = str(e)
+            if "timeout" in error_message.lower():
+                error_message = "Request timed out. Please try again or increase the timeout value in settings."
+            logging.error(f"Error querying OpenAI API: {error_message}")
+            raise Exception(f"Error querying OpenAI API: {error_message}")
 
     @staticmethod
     def process_rule_generation(rule_generation_id: int) -> Dict[str, Any]:
@@ -349,30 +413,65 @@ class SpamGenieService:
             workspace = rule_generation.workspace
             email_files = workspace.email_files.all()
 
+            # Get timeout setting
+            try:
+                timeout_setting = AppSettings.objects.get(key='rule_gen_timeout')
+                timeout = int(timeout_setting.value) / 1000  # Convert milliseconds to seconds
+            except AppSettings.DoesNotExist:
+                timeout = 30  # Default 30 seconds
+
             # Generate the prompt if it's not already set (from a custom prompt)
             if not rule_generation.prompt:
                 prompt = SpamGenieService.generate_prompt(rule_generation, email_files)
                 rule_generation.prompt = prompt
                 rule_generation.save()
 
-            # Query OpenAI API instead of Gemini
-            rule = SpamGenieService.query_openai(rule_generation.prompt)
+            try:
+                # Use ThreadPoolExecutor to run the API call with a timeout
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(SpamGenieService.query_openai, rule_generation.prompt)
+                    try:
+                        rule = future.result(timeout=timeout)
+                    except concurrent.futures.TimeoutError:
+                        error_message = "Request timed out. Please try again or increase the timeout value in settings."
+                        rule_generation.rule = error_message
+                        rule_generation.error = error_message
+                        rule_generation.is_complete = True
+                        rule_generation.save()
+                        return {
+                            "success": False,
+                            "error": error_message,
+                            "rule_generation_id": rule_generation.id,
+                        }
 
-            # Update the rule generation
-            rule_generation.rule = rule
-            rule_generation.is_complete = True
-            rule_generation.save()
+                # Update the rule generation
+                rule_generation.rule = rule
+                rule_generation.is_complete = True
+                rule_generation.save()
 
-            # Mark email files as processed
-            for email_file in email_files:
-                email_file.processed = True
-                email_file.save()
+                # Mark email files as processed
+                for email_file in email_files:
+                    email_file.processed = True
+                    email_file.save()
 
-            return {
-                "success": True,
-                "rule_generation_id": rule_generation.id,
-                "rule": rule,
-            }
+                return {
+                    "success": True,
+                    "rule_generation_id": rule_generation.id,
+                    "rule": rule,
+                }
+
+            except Exception as e:
+                error_message = str(e)
+                rule_generation.rule = error_message
+                rule_generation.error = error_message
+                rule_generation.is_complete = True
+                rule_generation.save()
+                return {
+                    "success": False,
+                    "error": error_message,
+                    "rule_generation_id": rule_generation.id,
+                }
+
         except RuleGeneration.DoesNotExist:
             return {
                 "success": False,
@@ -380,6 +479,10 @@ class SpamGenieService:
             }
         except Exception as e:
             import logging
-
-            logging.error(f"Error processing rule generation {rule_generation_id}: {str(e)}")
-            return {"success": False, "error": str(e)}
+            error_message = str(e)
+            logging.error(f"Error processing rule generation {rule_generation_id}: {error_message}")
+            # Update rule generation with error
+            rule_generation.error = error_message
+            rule_generation.is_complete = True
+            rule_generation.save()
+            return {"success": False, "error": error_message}

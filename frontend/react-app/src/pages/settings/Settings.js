@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import AppSettings from '../../components/admin/AppSettings';
 
 const Settings = () => {
   const { currentUser, isAdmin } = useAuth();
@@ -112,19 +113,23 @@ const Settings = () => {
               </p>
             </div>
 
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">User Management</h3>
-                <div className="mt-2 max-w-xl text-sm text-gray-500">
-                  <p>Manage users, assign roles, and control access to the system.</p>
-                </div>
-                <div className="mt-5">
-                  <Link
-                    to="/admin/users"
-                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  >
-                    Go to User Management
-                  </Link>
+            <div className="space-y-6">
+              <AppSettings />
+
+              <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">User Management</h3>
+                  <div className="mt-2 max-w-xl text-sm text-gray-500">
+                    <p>Manage users, assign roles, and control access to the system.</p>
+                  </div>
+                  <div className="mt-5">
+                    <Link
+                      to="/admin/users"
+                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                      Go to User Management
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
