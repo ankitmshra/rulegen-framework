@@ -45,13 +45,13 @@ const RuleViewer = ({
   // Handle rule regeneration with feedback
   const handleRegenerateWithFeedback = () => {
     if (!feedbackText.trim()) return;
-    
+
     // Make sure we're passing only the string, not any references to DOM elements
     const feedbackString = String(feedbackText.trim());
-    
+
     // Call the rule generation function with feedback
     onGenerateRule(feedbackString);
-    
+
     // Clear the feedback text
     setFeedbackText('');
   };
@@ -149,10 +149,10 @@ const RuleViewer = ({
   };
 
   // Custom renderer for code blocks with copy button
-  const CodeBlock = ({language, value}) => {
+  const CodeBlock = ({ language, value }) => {
     return (
       <div className="code-block-container">
-        <button 
+        <button
           onClick={() => handleCodeBlockCopy(value)}
           className="copy-button"
           aria-label="Copy code"
@@ -197,7 +197,7 @@ const RuleViewer = ({
         <ReactMarkdown
           children={content}
           components={{
-            code({node, inline, className, children, ...props}) {
+            code({ node, inline, className, children, ...props }) {
               if (inline) {
                 return <code className="inline-code" {...props}>{children}</code>;
               }
@@ -206,27 +206,27 @@ const RuleViewer = ({
               const value = String(children).replace(/\n$/, '');
               return <CodeBlock language={language} value={value} />;
             },
-            h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-6 mb-3" {...props} />,
-            h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-5 mb-2" {...props} />,
-            h3: ({node, ...props}) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
-            h4: ({node, ...props}) => <h4 className="text-base font-bold mt-3 mb-1" {...props} />,
-            p: ({node, ...props}) => <p className="my-2" {...props} />,
-            ul: ({node, ...props}) => <ul className="list-disc pl-5 my-2" {...props} />,
-            ol: ({node, ...props}) => <ol className="list-decimal pl-5 my-2" {...props} />,
-            li: ({node, ...props}) => <li className="my-1" {...props} />,
-            blockquote: ({node, ...props}) => (
+            h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mt-6 mb-3" {...props} />,
+            h2: ({ node, ...props }) => <h2 className="text-xl font-bold mt-5 mb-2" {...props} />,
+            h3: ({ node, ...props }) => <h3 className="text-lg font-bold mt-4 mb-2" {...props} />,
+            h4: ({ node, ...props }) => <h4 className="text-base font-bold mt-3 mb-1" {...props} />,
+            p: ({ node, ...props }) => <p className="my-2" {...props} />,
+            ul: ({ node, ...props }) => <ul className="list-disc pl-5 my-2" {...props} />,
+            ol: ({ node, ...props }) => <ol className="list-decimal pl-5 my-2" {...props} />,
+            li: ({ node, ...props }) => <li className="my-1" {...props} />,
+            blockquote: ({ node, ...props }) => (
               <blockquote className="border-l-4 border-gray-300 pl-4 my-2 italic" {...props} />
             ),
-            hr: ({node, ...props}) => <hr className="my-4 border-gray-300" {...props} />,
-            table: ({node, ...props}) => (
+            hr: ({ node, ...props }) => <hr className="my-4 border-gray-300" {...props} />,
+            table: ({ node, ...props }) => (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-300" {...props} />
               </div>
             ),
-            th: ({node, ...props}) => (
+            th: ({ node, ...props }) => (
               <th className="px-4 py-2 bg-gray-100 font-semibold text-left" {...props} />
             ),
-            td: ({node, ...props}) => <td className="px-4 py-2 border-t" {...props} />,
+            td: ({ node, ...props }) => <td className="px-4 py-2 border-t" {...props} />,
           }}
         />
       </div>
@@ -445,46 +445,36 @@ const RuleViewer = ({
         )}
       </div>
 
-      {/* Feedback Section */}
+      {/* Simplified Feedback Section with small textarea and send icon */}
       {rules.length > 0 && isRuleComplete && !error && (
-        <div className="bg-white shadow overflow-hidden rounded-lg mb-6">
-          <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
-              Request Changes
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              Describe how you would like the rule to be improved or modified.
-            </p>
-          </div>
-          <div className="px-4 py-5 sm:p-6">
+        <div className="mb-6">
+          <div className="relative">
             <textarea
               value={feedbackText}
               onChange={(e) => setFeedbackText(e.target.value)}
-              className="w-full h-32 p-2 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Describe the changes you'd like to make to the generated rule..."
+              rows="3"
+              className="w-full p-2 pr-10 text-sm border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Provide feedback for rule improvement..."
             />
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={handleRegenerateWithFeedback}
-                disabled={isGenerating || !feedbackText.trim()}
-                className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
-                  (isGenerating || !feedbackText.trim()) ? 'opacity-50 cursor-not-allowed' : ''
+            <button
+              type="button"
+              onClick={handleRegenerateWithFeedback}
+              disabled={isGenerating || !feedbackText.trim()}
+              className={`absolute right-2 bottom-2 p-1 rounded-full text-indigo-600 hover:bg-indigo-100 focus:outline-none ${(isGenerating || !feedbackText.trim()) ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
-              >
-                {isGenerating ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Generating...
-                  </>
-                ) : (
-                  <>Regenerate with Feedback</>
-                )}
-              </button>
-            </div>
+              title="Send feedback and regenerate rule"
+            >
+              {isGenerating ? (
+                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
       )}
