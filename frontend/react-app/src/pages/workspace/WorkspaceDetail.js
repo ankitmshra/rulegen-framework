@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate, Routes, Route } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { workspaceAPI } from '../../services/api';
 import PromptManagement from '../prompt/PromptManagement';
 import RuleGeneration from '../rule/RuleGeneration';
 import ShareWorkspaceModal from '../../components/workspace/ShareWorkspaceModal';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const WorkspaceDetail = () => {
   const { workspaceId } = useParams();
@@ -14,6 +15,7 @@ const WorkspaceDetail = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('rule-generation');
   const [showShareModal, setShowShareModal] = useState(false);
+  const [direction, setDirection] = useState(0); // 1 for right-to-left, -1 for left-to-right
 
   useEffect(() => {
     const fetchWorkspace = async () => {
@@ -40,17 +42,32 @@ const WorkspaceDetail = () => {
 
   // Handle tab change
   const handleTabChange = (tab) => {
+    // Set animation direction based on which tab we're moving to
+    if (tab === 'prompt-management' && activeTab === 'rule-generation') {
+      setDirection(1); // Moving right (rule-gen to prompt-mgmt)
+    } else if (tab === 'rule-generation' && activeTab === 'prompt-management') {
+      setDirection(-1); // Moving left (prompt-mgmt to rule-gen)
+    }
+    
     setActiveTab(tab);
     // Store in localStorage
     localStorage.setItem(`workspace_${workspaceId}_tab`, tab);
-    
-    // Remove the navigation lines that change the URL
-    // No longer need:
-    // if (tab === 'prompt-management') {
-    //   navigate(`/workspaces/${workspaceId}/prompts`);
-    // } else {
-    //   navigate(`/workspaces/${workspaceId}/rules`);
-    // }
+  };
+
+  // Animation variants
+  const tabContentVariants = {
+    enter: (direction) => ({
+      x: direction > 0 ? 30 : -30,
+      opacity: 0
+    }),
+    center: {
+      x: 0,
+      opacity: 1
+    },
+    exit: (direction) => ({
+      x: direction < 0 ? 30 : -30,
+      opacity: 0
+    })
   };
 
   if (loading) {
@@ -133,9 +150,9 @@ const WorkspaceDetail = () => {
             onClick={() => handleTabChange('rule-generation')}
             className={`${
               activeTab === 'rule-generation'
-                ? 'border-indigo-500 text-indigo-600'
+                ? 'border-indigo-500 text-indigo-600 border-b-2'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } flex-1 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-center`}
+            } flex-1 whitespace-nowrap py-4 px-1 font-medium text-sm text-center`}
           >
             Rule Generation
           </button>
@@ -143,19 +160,46 @@ const WorkspaceDetail = () => {
             onClick={() => handleTabChange('prompt-management')}
             className={`${
               activeTab === 'prompt-management'
-                ? 'border-indigo-500 text-indigo-600'
+                ? 'border-indigo-500 text-indigo-600 border-b-2'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } flex-1 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-center`}
+            } flex-1 whitespace-nowrap py-4 px-1 font-medium text-sm text-center`}
           >
             Prompt Management
           </button>
         </div>
       </div>
 
-      {/* Tab content */}
-      <div className="px-6 py-5">
-        {activeTab === 'rule-generation' && <RuleGeneration key={`rules-${workspace.id}`} workspace={workspace} />}
-        {activeTab === 'prompt-management' && <PromptManagement workspace={workspace} />}
+      {/* Tab content with AnimatePresence */}
+      <div className="px-6 py-5 overflow-hidden">
+        <AnimatePresence mode="wait" custom={direction}>
+          {activeTab === 'rule-generation' && (
+            <motion.div
+              key="rule-generation"
+              custom={direction}
+              variants={tabContentVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+            >
+              <RuleGeneration key={`rules-${workspace.id}`} workspace={workspace} />
+            </motion.div>
+          )}
+          
+          {activeTab === 'prompt-management' && (
+            <motion.div
+              key="prompt-management"
+              custom={direction}
+              variants={tabContentVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+            >
+              <PromptManagement workspace={workspace} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Share Workspace Modal */}

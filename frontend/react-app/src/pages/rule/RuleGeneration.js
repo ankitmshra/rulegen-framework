@@ -4,6 +4,7 @@ import EmailUploader from '../../components/rule/EmailUploader';
 import HeaderSelector from '../../components/rule/HeaderSelector';
 import PromptEditor from '../../components/rule/PromptEditor';
 import RuleViewer from '../../components/rule/RuleViewer';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const RuleGeneration = ({ workspace }) => {
   // Email file state
@@ -38,6 +39,9 @@ const RuleGeneration = ({ workspace }) => {
   const canAccessHeaders = emailFiles.length > 0;
   const canAccessPrompt = canAccessHeaders && selectedHeaders.length > 0;
   const canAccessRules = canAccessPrompt && generatedPrompt !== '';
+
+  // Direction state
+  const [direction, setDirection] = useState(1); // 1 for forward, -1 for backward
 
   // Determine the most advanced step we can show
   useEffect(() => {
@@ -171,6 +175,7 @@ const RuleGeneration = ({ workspace }) => {
       
       // Only move to headers step if this was an upload, not a deletion
       if (newFiles.length > 0 && !updatedFilesAfterDeletion) {
+        setDirection(1); // Set forward direction
         setActiveStep('headers');
       }
     } catch (err) {
@@ -196,6 +201,7 @@ const RuleGeneration = ({ workspace }) => {
     }
     
     // Move to prompt step
+    setDirection(1); // Set forward direction
     setActiveStep('prompt');
   };
 
@@ -213,6 +219,7 @@ const RuleGeneration = ({ workspace }) => {
       });
 
       setGeneratedPrompt(response.data.prompt);
+      setDirection(1); // Set forward direction
       setActiveStep('rule');
     } catch (err) {
       console.error('Error generating prompt:', err);
@@ -302,6 +309,24 @@ const RuleGeneration = ({ workspace }) => {
 
   // Clickable step indicator component
   const StepIndicator = ({ steps, currentStep, onStepClick }) => {
+    // Calculate positions for each step
+    const totalSteps = steps.length;
+    const currentIndex = steps.findIndex(step => step.id === currentStep);
+    
+    // Store previous index for animation direction
+    const [prevIndex, setPrevIndex] = useState(currentIndex);
+    
+    // Update previous index when current changes
+    useEffect(() => {
+      // Only update after initial render
+      if (prevIndex !== currentIndex) {
+        setPrevIndex(currentIndex);
+      }
+    }, [currentIndex]);
+
+    // Determine if transitioning forward or backward
+    const isMovingForward = currentIndex >= prevIndex;
+
     return (
       <div className="mb-8">
         <div className="w-full">
@@ -312,44 +337,79 @@ const RuleGeneration = ({ workspace }) => {
               const isCompleted = step.completed;
               
               return (
-                <div 
+                <motion.div 
                   key={step.id} 
-                  className={`flex-1 text-center transition-colors duration-200 px-2 ${isClickable ? 'cursor-pointer hover:text-indigo-700' : 'cursor-default'}`}
+                  className={`flex-1 text-center px-2 ${isClickable ? 'cursor-pointer hover:text-indigo-700' : 'cursor-default'}`}
                   onClick={() => isClickable && onStepClick(step.id)}
+                  whileHover={isClickable ? { scale: 1.03 } : {}}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 >
                   <div className="flex justify-center items-center">
-                    <div className={`
-                      mr-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0
-                      ${isActive ? 'bg-indigo-600 text-white' : isCompleted ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600'}
-                    `}>
+                    <motion.div 
+                      className={`
+                        mr-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0
+                        ${isActive ? 'bg-indigo-600 text-white' : isCompleted ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600'}
+                      `}
+                      animate={isActive ? { scale: [1, 1.1, 1] } : {}}
+                      transition={{ duration: 0.8, repeat: isActive ? Infinity : 0, repeatDelay: 3 }}
+                    >
                       {isCompleted ? 
                         <svg className="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg> : 
                         stepIdx + 1
                       }
-                    </div>
-                    <span 
+                    </motion.div>
+                    <motion.span 
                       className={`
                         text-sm font-medium whitespace-nowrap
                         ${isActive ? 'text-indigo-600' : isCompleted ? 'text-gray-700' : 'text-gray-400'}
                       `}
+                      animate={isActive ? { scale: 1.03 } : { scale: 1 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
                     >
                       {step.name}
-                    </span>
+                    </motion.span>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
           
-          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className="h-1 bg-indigo-600 transition-all duration-300 ease-in-out" 
-              style={{ 
-                width: `${(steps.findIndex(step => step.id === currentStep) + 1) * (100 / steps.length)}%` 
+          {/* New approach using background position */}
+          <div className="relative h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+            <motion.div
+              className="absolute top-0 left-0 bottom-0 bg-indigo-600 rounded-full"
+              style={{
+                originX: isMovingForward ? '0%' : '100%'
               }}
-            ></div>
+              initial={false}
+              animate={{
+                width: `${(currentIndex + 1) * (100 / totalSteps)}%`
+              }}
+              transition={{
+                duration: 0.5,
+                ease: "easeInOut"
+              }}
+            />
+            
+            {/* Step markers */}
+            <div className="absolute top-0 bottom-0 left-0 right-0 flex">
+              {steps.map((step, i) => {
+                // Don't render a marker for the first position
+                if (i === 0) return null;
+                
+                const position = (i * 100) / totalSteps;
+                
+                return (
+                  <div
+                    key={`marker-${i}`}
+                    className="absolute w-1 h-1 bg-gray-400 rounded-full top-0 bottom-0 my-auto"
+                    style={{ left: `${position}%` }}
+                  />
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -358,6 +418,16 @@ const RuleGeneration = ({ workspace }) => {
 
   // Handle clicking on a step
   const handleStepClick = (stepId) => {
+    const currentIndex = steps.findIndex(step => step.id === activeStep);
+    const newIndex = steps.findIndex(step => step.id === stepId);
+    
+    // Set direction based on step index comparison
+    if (newIndex > currentIndex) {
+      setDirection(1); // forward
+    } else {
+      setDirection(-1); // backward
+    }
+    
     setActiveStep(stepId);
   };
 
@@ -388,6 +458,27 @@ const RuleGeneration = ({ workspace }) => {
       canAccess: generatedRules.length > 0 || canAccessRules
     }
   ];
+
+  // Also update these navigation functions
+  const navigateToHeaders = () => {
+    setDirection(-1);
+    setActiveStep('headers');
+  };
+
+  const navigateToUpload = () => {
+    setDirection(-1);
+    setActiveStep('upload');
+  };
+
+  const navigateToPrompt = () => {
+    setDirection(-1);
+    setActiveStep('prompt');
+  };
+
+  const continueToHeaders = () => {
+    setDirection(1);
+    setActiveStep('headers');
+  };
 
   if (loading) {
     return (
@@ -422,55 +513,66 @@ const RuleGeneration = ({ workspace }) => {
 
       {/* Content based on active step */}
       <div className="bg-white shadow rounded-lg overflow-hidden">
-        {activeStep === 'upload' && (
-          <EmailUploader 
-            workspaceId={workspace.id} 
-            existingFiles={emailFiles}
-            onUploadSuccess={handleEmailUploadSuccess}
-            onContinue={() => setActiveStep('headers')}
-          />
-        )}
+        <AnimatePresence mode="wait" custom={direction}>
+          <motion.div
+            key={activeStep}
+            custom={direction}
+            initial={{ opacity: 0, x: direction * 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: direction * -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            {activeStep === 'upload' && (
+              <EmailUploader 
+                workspaceId={workspace.id} 
+                existingFiles={emailFiles}
+                onUploadSuccess={handleEmailUploadSuccess}
+                onContinue={continueToHeaders}
+              />
+            )}
 
-        {activeStep === 'headers' && (
-          <HeaderSelector 
-            availableHeaders={availableHeaders}
-            selectedHeaders={selectedHeaders}
-            onSelectHeaders={setSelectedHeaders}
-            onContinue={handleHeaderSelectionDone}
-            onBack={() => setActiveStep('upload')}
-          />
-        )}
+            {activeStep === 'headers' && (
+              <HeaderSelector 
+                availableHeaders={availableHeaders}
+                selectedHeaders={selectedHeaders}
+                onSelectHeaders={setSelectedHeaders}
+                onContinue={handleHeaderSelectionDone}
+                onBack={navigateToUpload}
+              />
+            )}
 
-        {activeStep === 'prompt' && (
-          <PromptEditor
-            basePrompts={basePrompts}
-            selectedBasePrompt={selectedBasePrompt}
-            onBasePromptChange={setSelectedBasePrompt}
-            modulePrompts={modulePrompts}
-            selectedModules={selectedModules}
-            onModulesChange={setSelectedModules}
-            onGeneratePrompt={handleGeneratePrompt}
-            isGenerating={isGeneratingPrompt}
-            error={promptError}
-            onBack={() => setActiveStep('headers')}
-            emailFiles={emailFiles}
-          />
-        )}
+            {activeStep === 'prompt' && (
+              <PromptEditor
+                basePrompts={basePrompts}
+                selectedBasePrompt={selectedBasePrompt}
+                onBasePromptChange={setSelectedBasePrompt}
+                modulePrompts={modulePrompts}
+                selectedModules={selectedModules}
+                onModulesChange={setSelectedModules}
+                onGeneratePrompt={handleGeneratePrompt}
+                isGenerating={isGeneratingPrompt}
+                error={promptError}
+                onBack={navigateToHeaders}
+                emailFiles={emailFiles}
+              />
+            )}
 
-        {activeStep === 'rule' && (
-          <RuleViewer
-            generatedPrompt={generatedPrompt}
-            rules={generatedRules}
-            currentRuleIndex={currentRuleIndex}
-            onRuleIndexChange={setCurrentRuleIndex}
-            onGenerateRule={handleGenerateRule}
-            isGenerating={isGeneratingRule}
-            error={ruleError}
-            onBack={() => setActiveStep('prompt')}
-            onPromptUpdate={handlePromptUpdate}
-            workspace={workspace}
-          />
-        )}
+            {activeStep === 'rule' && (
+              <RuleViewer
+                generatedPrompt={generatedPrompt}
+                rules={generatedRules}
+                currentRuleIndex={currentRuleIndex}
+                onRuleIndexChange={setCurrentRuleIndex}
+                onGenerateRule={handleGenerateRule}
+                isGenerating={isGeneratingRule}
+                error={ruleError}
+                onBack={navigateToPrompt}
+                onPromptUpdate={handlePromptUpdate}
+                workspace={workspace}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -28,7 +28,14 @@ const Dashboard = () => {
   }, []);
 
   const createNewWorkspace = () => {
-    navigate('/workspaces', { state: { showCreateModal: true } });
+    // Navigate with state and use replace: true to avoid history issues
+    navigate('/workspaces', { 
+      state: { 
+        showCreateModal: true,
+        from: 'dashboard' // Add an indicator that we're coming from dashboard
+      },
+      replace: true
+    });
   };
 
   // Group workspaces into "My Workspaces" and "Shared with Me"
@@ -237,4 +244,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default Dashboard; 

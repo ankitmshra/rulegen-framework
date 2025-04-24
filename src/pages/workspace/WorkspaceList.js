@@ -21,10 +21,10 @@ const WorkspaceList = () => {
   // Check if we should show the create modal from navigation state
   useEffect(() => {
     if (location.state?.showCreateModal) {
-      // Use setTimeout to ensure the component is fully mounted
+      // Set timeout to ensure component is fully mounted
       setTimeout(() => {
         setShowCreateModal(true);
-        // Clear the state to prevent reopening on navigation
+        // Clear the state
         navigate(location.pathname, { replace: true, state: {} });
       }, 100);
     }
@@ -90,12 +90,7 @@ const WorkspaceList = () => {
   return (
     <div className="bg-white shadow rounded-lg overflow-hidden">
       <div className="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Welcome, {currentUser.firstName || currentUser.username}! Create or select a workspace to generate SpamAssassin rules.
-          </p>
-        </div>
+        <h1 className="text-2xl font-semibold text-gray-900">Workspaces</h1>
         <button
           onClick={() => setShowCreateModal(true)}
           className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -114,9 +109,9 @@ const WorkspaceList = () => {
             onClick={() => setActiveTab('my-workspaces')}
             className={`${
               activeTab === 'my-workspaces'
-                ? 'border-indigo-500 text-indigo-600 border-b-2'
+                ? 'border-indigo-500 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 font-medium text-sm mr-8 focus:outline-none`}
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm mr-8`}
           >
             My Workspaces ({myWorkspaces.length})
           </button>
@@ -124,9 +119,9 @@ const WorkspaceList = () => {
             onClick={() => setActiveTab('shared-workspaces')}
             className={`${
               activeTab === 'shared-workspaces'
-                ? 'border-indigo-500 text-indigo-600 border-b-2'
+                ? 'border-indigo-500 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 font-medium text-sm focus:outline-none`}
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
           >
             Shared with Me ({sharedWorkspaces.length})
           </button>
@@ -228,10 +223,10 @@ const WorkspaceList = () => {
             {sharedWorkspaces.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-lg">
                 <svg className="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <h3 className="mt-2 text-sm font-medium text-gray-900">No shared workspaces</h3>
-                <p className="mt-1 text-sm text-gray-500">Workspaces shared with you will appear here.</p>
+                <p className="mt-1 text-sm text-gray-500">Others can share their workspaces with you.</p>
               </div>
             ) : (
               <div className="bg-white overflow-hidden rounded-md">
@@ -295,4 +290,4 @@ const WorkspaceList = () => {
   );
 };
 
-export default WorkspaceList;
+export default WorkspaceList; 

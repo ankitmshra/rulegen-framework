@@ -9,7 +9,6 @@ import Login from './components/auth/Login';
 import MainLayout from './components/layout/MainLayout';
 
 // Pages
-import Dashboard from './pages/Dashboard';
 import WorkspaceList from './pages/workspace/WorkspaceList';
 import WorkspaceDetail from './pages/workspace/WorkspaceDetail';
 import PromptManagement from './pages/prompt/PromptManagement';
@@ -77,7 +76,8 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Dashboard />} />
+            {/* Redirect from root to workspaces */}
+            <Route index element={<Navigate to="/workspaces" replace />} />
             <Route path="workspaces" element={<WorkspaceList />} />
             <Route path="workspaces/:workspaceId" element={<WorkspaceDetail />} />
             <Route path="workspaces/:workspaceId/prompts" element={<PromptManagement />} />

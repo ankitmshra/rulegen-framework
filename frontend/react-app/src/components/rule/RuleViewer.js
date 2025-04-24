@@ -8,6 +8,7 @@ import CodeBlockExportButton from './CodeBlockExportButton';
 import ExportModal from './ExportModal';
 import './codeblock.css';
 import './form-elements.css';
+import { AnimatePresence, motion } from 'framer-motion';
 
 const RuleViewer = ({
   generatedPrompt,
@@ -401,6 +402,16 @@ const RuleViewer = ({
               onClick={() => setPromptVisible(!promptVisible)}
               className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
+              <motion.span 
+                initial={false}
+                animate={{ rotate: promptVisible ? 180 : 0 }}
+                transition={{ duration: 0.3 }}
+                className="mr-2"
+              >
+                <svg className="h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </motion.span>
               {promptVisible ? 'Hide Prompt' : 'Show Prompt'}
             </button>
 
@@ -439,53 +450,63 @@ const RuleViewer = ({
         </div>
 
         {/* Prompt Collapsible Section */}
-        {promptVisible && (
-          <div className="px-4 py-5 sm:p-6 border-b border-gray-200">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="text-sm font-medium text-gray-900">Generated Prompt</h4>
-              {!isEditingPrompt ? (
-                <button
-                  onClick={() => setIsEditingPrompt(true)}
-                  className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
-                >
-                  <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  Edit Prompt
-                </button>
-              ) : (
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleSavePrompt}
-                    className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={handleCancelEdit}
-                    className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
-                  >
-                    Cancel
-                  </button>
+        <AnimatePresence initial={false}>
+          {promptVisible && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="overflow-hidden border-b border-gray-200"
+            >
+              <div className="px-4 py-5 sm:p-6">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-medium text-gray-900">Generated Prompt</h4>
+                  {!isEditingPrompt ? (
+                    <button
+                      onClick={() => setIsEditingPrompt(true)}
+                      className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
+                    >
+                      <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      Edit Prompt
+                    </button>
+                  ) : (
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={handleSavePrompt}
+                        className="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-indigo-500"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="bg-gray-50 p-4 rounded-md">
-              {isEditingPrompt ? (
-                <textarea
-                  value={editedPrompt}
-                  onChange={(e) => setEditedPrompt(e.target.value)}
-                  className="w-full h-64 p-2 text-sm font-mono border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder="Edit your prompt here..."
-                />
-              ) : (
-                <div className="prose prose-sm max-w-none max-h-64 overflow-y-auto">
-                  {renderMarkdown(generatedPrompt)}
+                <div className="bg-gray-50 p-4 rounded-md">
+                  {isEditingPrompt ? (
+                    <textarea
+                      value={editedPrompt}
+                      onChange={(e) => setEditedPrompt(e.target.value)}
+                      className="w-full h-64 p-2 text-sm font-mono border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Edit your prompt here..."
+                    />
+                  ) : (
+                    <div className="prose prose-sm max-w-none overflow-y-auto" style={{ maxHeight: "300px" }}>
+                      {renderMarkdown(generatedPrompt)}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Rule Content */}
         <div className="px-4 py-5 sm:p-6">
