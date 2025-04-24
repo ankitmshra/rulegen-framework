@@ -1,0 +1,51 @@
+.code-block-container {
+  position: relative;
+  margin: 1rem 0;
+}
+
+.copy-button, .export-button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.375rem;
+  border-radius: 0.375rem;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #4b5563;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  width: 2rem;
+  height: 2rem;
+}
+
+.copy-button {
+  right: 0.75rem;
+}
+
+.export-button {
+  right: 3.25rem;
+}
+
+.copy-button:hover, .export-button:hover {
+  opacity: 1;
+  transform: translateY(-50%) scale(1.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  background-color: white;
+}
+
+.copy-button:hover {
+  color: #1d4ed8;
+}
+
+.export-button:hover {
+  color: #047857;
+}
+
+.markdown-content pre {
+  position: relative;
+} 

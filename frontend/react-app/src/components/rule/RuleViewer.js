@@ -3,6 +3,11 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import DownloadModal from './DownloadModal';
+import { useNavigate } from 'react-router-dom';
+import CodeBlockExportButton from './CodeBlockExportButton';
+import ExportModal from './ExportModal';
+import './codeblock.css';
+import './form-elements.css';
 
 const RuleViewer = ({
   generatedPrompt,
@@ -13,8 +18,10 @@ const RuleViewer = ({
   isGenerating,
   error,
   onBack,
-  onPromptUpdate
+  onPromptUpdate,
+  workspace
 }) => {
+  const navigate = useNavigate();
   const [promptVisible, setPromptVisible] = useState(false);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState(generatedPrompt);
@@ -22,11 +29,18 @@ const RuleViewer = ({
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [copiedBlocks, setCopiedBlocks] = useState({});
   const [feedbackText, setFeedbackText] = useState('');
+  const [selectedRules, setSelectedRules] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Update editedPrompt when generatedPrompt changes
   useEffect(() => {
     setEditedPrompt(generatedPrompt);
-  }, [generatedPrompt]);
+    
+    // For debugging - log the first rule structure
+    if (rules.length > 0) {
+      console.log("Rule structure:", rules[0]);
+    }
+  }, [generatedPrompt, rules]);
 
   // Handle prompt edit save
   const handleSavePrompt = () => {
@@ -78,6 +92,35 @@ const RuleViewer = ({
     setTimeout(() => {
       setCopySuccess('');
     }, 2000);
+  };
+
+  // Handle rule export
+  const handleExportRule = (rule, codeBlockText) => {
+    // Create a simple hash for the code block
+    const hashCode = str => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return Math.abs(hash).toString(16);
+    };
+    
+    const blockId = `${rule.id}-${hashCode(codeBlockText.substring(0, 50))}`;
+    
+    // Check if this specific code block is already selected
+    if (selectedRules.some(r => r.blockId === blockId)) {
+      setSelectedRules(selectedRules.filter(r => r.blockId !== blockId));
+    } else {
+      // Add this code block with its content to selected rules
+      setSelectedRules([...selectedRules, {
+        ...rule,
+        blockId,
+        codeBlockText,
+        rule: `\`\`\`\n${codeBlockText}\n\`\`\``
+      }]);
+    }
   };
 
   // Download rule as .cf file
@@ -148,19 +191,100 @@ const RuleViewer = ({
     });
   };
 
+  // Export all code blocks from current rule
+  const handleExportAllCodeBlocks = () => {
+    if (!currentRule?.rule) return;
+    
+    // Extract all code blocks from the rule content
+    const ruleContent = currentRule.rule;
+    const codeBlockRegex = /```(?:\w*\n)?([\s\S]*?)```/g;
+    let match;
+    let extractedCodeBlocks = [];
+    
+    // Find all code blocks
+    while ((match = codeBlockRegex.exec(ruleContent)) !== null) {
+      // The actual code content is in the first capturing group
+      const codeBlockText = match[1].trim();
+      
+      // Create a simple hash for the code block
+      const hashCode = str => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          const char = str.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+        return Math.abs(hash).toString(16);
+      };
+      
+      const blockId = `${currentRule.id}-${hashCode(codeBlockText.substring(0, 50))}`;
+      
+      // Add this code block to the list
+      extractedCodeBlocks.push({
+        ...currentRule,
+        blockId,
+        codeBlockText,
+        rule: `\`\`\`\n${codeBlockText}\n\`\`\``,
+        selected: true
+      });
+    }
+    
+    // Set the selected rules to all code blocks from current rule
+    setSelectedRules(extractedCodeBlocks);
+    
+    // Open export modal if we found code blocks
+    if (extractedCodeBlocks.length > 0) {
+      setShowExportModal(true);
+    }
+  };
+
   // Custom renderer for code blocks with copy button
   const CodeBlock = ({ language, value }) => {
+    // Get the current rule for export
+    const currentRule = rules[currentRuleIndex] || {};
+    
+    // Create a simple hash for the code block
+    const hashCode = str => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return Math.abs(hash).toString(16);
+    };
+    
+    // Generate a unique ID for this code block
+    const blockId = `${currentRule.id}-${hashCode(value.substring(0, 50))}`;
+    
+    // Check if this specific block is selected
+    const isSelected = selectedRules.some(r => r.blockId === blockId);
+    
+    // Mark if this rule is selected for export
+    const blockWithSelection = {
+      ...currentRule,
+      blockId,
+      selected: isSelected
+    };
+    
     return (
       <div className="code-block-container">
         <button
           onClick={() => handleCodeBlockCopy(value)}
           className="copy-button"
           aria-label="Copy code"
+          title="Copy code"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
         </button>
+        {currentRule.is_complete && !error && (
+          <CodeBlockExportButton 
+            rule={blockWithSelection} 
+            onExport={() => handleExportRule(currentRule, value)}
+          />
+        )}
         <SyntaxHighlighter
           language={language}
           style={vscDarkPlus}
@@ -282,21 +406,32 @@ const RuleViewer = ({
 
             {rules.length > 0 && isRuleComplete && !error && (
               <>
-                <button
-                  onClick={copyToClipboard}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  {copySuccess || 'Copy Rule'}
-                </button>
+                <div className="flex-grow"></div>
 
                 <button
-                  onClick={() => setShowDownloadModal(true)}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  onClick={() => selectedRules.length > 0 ? setShowExportModal(true) : null}
+                  className={`
+                    inline-flex items-center px-3 py-2 border shadow-sm text-sm leading-4 font-medium rounded-md
+                    ${selectedRules.length > 0 
+                      ? 'text-white bg-indigo-600 hover:bg-indigo-700 border-transparent' 
+                      : 'text-gray-400 bg-gray-100 border-gray-200 cursor-not-allowed'
+                    }
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500
+                    relative group
+                  `}
                 >
                   <svg className="-ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m-3-3V4" />
                   </svg>
-                  Download .cf
+                  Export {selectedRules.length > 0 ? `${selectedRules.length} ${selectedRules.length === 1 ? 'Block' : 'Blocks'}` : 'Rules'}
+                  
+                  {/* Tooltip that appears on hover when no rules are selected */}
+                  {selectedRules.length === 0 && (
+                    <div className="absolute left-1/2 transform -translate-x-1/2 top-full mt-2 px-4 py-3 bg-white text-gray-700 text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-lg border border-gray-200 text-center">
+                      <div className="font-medium">Export rules to download</div>
+                      <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white rotate-45 border-t border-l border-gray-200"></div>
+                    </div>
+                  )}
                 </button>
               </>
             )}
@@ -383,7 +518,84 @@ const RuleViewer = ({
               </p>
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none max-h-96 overflow-y-auto pr-2">
+            <div className="prose prose-sm max-w-none max-h-96 overflow-y-auto pr-2 relative">
+              {/* Floating Select All Code Blocks button */}
+              {rules.length > 0 && isRuleComplete && !error && (
+                <button
+                  onClick={() => {
+                    // Check if we already have all code blocks selected
+                    const allBlocksSelected = selectedRules.length > 0 && 
+                      currentRule?.rule && 
+                      selectedRules.every(rule => rule.id === currentRule.id);
+                    
+                    if (allBlocksSelected) {
+                      // Deselect all blocks
+                      setSelectedRules([]);
+                    } else {
+                      // Extract and select all code blocks
+                      const extractedCodeBlocks = [];
+                      if (currentRule?.rule) {
+                        // Extract all code blocks from the rule content
+                        const ruleContent = currentRule.rule;
+                        const codeBlockRegex = /```(?:\w*\n)?([\s\S]*?)```/g;
+                        let match;
+                        
+                        // Find all code blocks
+                        while ((match = codeBlockRegex.exec(ruleContent)) !== null) {
+                          // The actual code content is in the first capturing group
+                          const codeBlockText = match[1].trim();
+                          
+                          // Create a simple hash for the code block
+                          const hashCode = str => {
+                            let hash = 0;
+                            for (let i = 0; i < str.length; i++) {
+                              const char = str.charCodeAt(i);
+                              hash = ((hash << 5) - hash) + char;
+                              hash = hash & hash; // Convert to 32bit integer
+                            }
+                            return Math.abs(hash).toString(16);
+                          };
+                          
+                          const blockId = `${currentRule.id}-${hashCode(codeBlockText.substring(0, 50))}`;
+                          
+                          // Add this code block to the list
+                          extractedCodeBlocks.push({
+                            ...currentRule,
+                            blockId,
+                            codeBlockText,
+                            rule: `\`\`\`\n${codeBlockText}\n\`\`\``,
+                            selected: true
+                          });
+                        }
+                        
+                        // Set the selected rules
+                        setSelectedRules(extractedCodeBlocks);
+                      }
+                    }
+                  }}
+                  className={`absolute top-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-md shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 ${
+                    selectedRules.length > 0 && 
+                    currentRule?.rule && 
+                    selectedRules.every(rule => rule.id === currentRule.id)
+                      ? 'text-white bg-indigo-600 hover:bg-indigo-700' 
+                      : 'text-gray-700 bg-white hover:bg-gray-50'
+                  }`}
+                  title={selectedRules.length > 0 && 
+                         currentRule?.rule && 
+                         selectedRules.every(rule => rule.id === currentRule.id) 
+                         ? "Deselect All Code Blocks" : "Select All Code Blocks"}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${
+                    selectedRules.length > 0 && 
+                    currentRule?.rule && 
+                    selectedRules.every(rule => rule.id === currentRule.id)
+                      ? 'text-white' 
+                      : 'text-gray-700'
+                  }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </button>
+              )}
               {renderMarkdown(currentRule.rule)}
             </div>
           )}
@@ -519,6 +731,14 @@ const RuleViewer = ({
         isOpen={showDownloadModal}
         onClose={() => setShowDownloadModal(false)}
         onDownload={handleDownload}
+      />
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        exportedRules={selectedRules}
+        workspace={workspace}
       />
     </div>
   );

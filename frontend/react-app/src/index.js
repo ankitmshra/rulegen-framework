@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import './components/rule/form-elements.css';
+import './global-forms.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
