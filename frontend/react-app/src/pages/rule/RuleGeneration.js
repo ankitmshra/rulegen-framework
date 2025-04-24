@@ -304,71 +304,54 @@ const RuleGeneration = ({ workspace }) => {
   const StepIndicator = ({ steps, currentStep, onStepClick }) => {
     return (
       <div className="mb-8">
-        <nav aria-label="Progress">
-          <ol className="flex items-center">
+        <div className="w-full">
+          <div className="flex mb-4">
             {steps.map((step, stepIdx) => {
-              // Determine if this step is clickable
               const isClickable = step.canAccess;
-              
-              // Generate the appropriate class for the wrapper
-              const wrapperClass = isClickable 
-                ? "cursor-pointer hover:bg-gray-50 rounded-md px-2 py-1" 
-                : "";
+              const isActive = step.id === currentStep;
+              const isCompleted = step.completed;
               
               return (
-                <li key={step.id} className={`${stepIdx !== steps.length - 1 ? 'pr-8 sm:pr-20' : ''} relative`}>
-                  {/* Click handler wrapper */}
-                  <div 
-                    className={wrapperClass}
-                    onClick={() => isClickable && onStepClick(step.id)}
-                    title={isClickable ? `Go to ${step.name}` : `Complete previous steps first`}
-                  >
-                    {/* Current step */}
-                    {step.id === currentStep && (
-                      <div className="flex items-center">
-                        <div className="relative">
-                          <div className="w-5 h-5 bg-indigo-200 rounded-full flex items-center justify-center">
-                            <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full"></div>
-                          </div>
-                        </div>
-                        <span className="ml-4 text-sm font-medium text-indigo-600">{step.name}</span>
-                      </div>
-                    )}
-                    
-                    {/* Completed step */}
-                    {step.id !== currentStep && step.completed && (
-                      <div className="flex items-center">
-                        <div className="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center">
-                          <svg className="w-3 h-3 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <span className="ml-4 text-sm font-medium text-gray-500">{step.name}</span>
-                      </div>
-                    )}
-                    
-                    {/* Upcoming step */}
-                    {step.id !== currentStep && !step.completed && (
-                      <div className="flex items-center">
-                        <div className="w-5 h-5 bg-gray-200 rounded-full"></div>
-                        <span className="ml-4 text-sm font-medium text-gray-500">{step.name}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Connection line between steps */}
-                  {stepIdx !== steps.length - 1 && (
-                    <div className="hidden sm:block absolute top-0 right-0 h-full w-5" aria-hidden="true">
-                      <svg className="h-full w-full text-gray-300" viewBox="0 0 22 80" fill="none" preserveAspectRatio="none">
-                        <path d="M0 -2L20 40L0 82" vectorEffect="non-scaling-stroke" stroke="currentcolor" strokeLinejoin="round" />
-                      </svg>
+                <div 
+                  key={step.id} 
+                  className={`flex-1 text-center transition-colors duration-200 px-2 ${isClickable ? 'cursor-pointer hover:text-indigo-700' : 'cursor-default'}`}
+                  onClick={() => isClickable && onStepClick(step.id)}
+                >
+                  <div className="flex justify-center items-center">
+                    <div className={`
+                      mr-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0
+                      ${isActive ? 'bg-indigo-600 text-white' : isCompleted ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-600'}
+                    `}>
+                      {isCompleted ? 
+                        <svg className="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg> : 
+                        stepIdx + 1
+                      }
                     </div>
-                  )}
-                </li>
+                    <span 
+                      className={`
+                        text-sm font-medium whitespace-nowrap
+                        ${isActive ? 'text-indigo-600' : isCompleted ? 'text-gray-700' : 'text-gray-400'}
+                      `}
+                    >
+                      {step.name}
+                    </span>
+                  </div>
+                </div>
               );
             })}
-          </ol>
-        </nav>
+          </div>
+          
+          <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+            <div 
+              className="h-1 bg-indigo-600 transition-all duration-300 ease-in-out" 
+              style={{ 
+                width: `${(steps.findIndex(step => step.id === currentStep) + 1) * (100 / steps.length)}%` 
+              }}
+            ></div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -485,6 +468,7 @@ const RuleGeneration = ({ workspace }) => {
             error={ruleError}
             onBack={() => setActiveStep('prompt')}
             onPromptUpdate={handlePromptUpdate}
+            workspace={workspace}
           />
         )}
       </div>
